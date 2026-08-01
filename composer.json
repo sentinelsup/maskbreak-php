@@ -1,0 +1,46 @@
+{
+    "name": "sentinelsup/sdk",
+    "description": "Official PHP SDK for Sentinel — real-time fraud detection, VPN/residential-proxy/antidetect-browser detection in under 40ms.",
+    "keywords": [
+        "fraud-detection",
+        "fraud-prevention",
+        "vpn-detection",
+        "proxy-detection",
+        "bot-detection",
+        "device-fingerprinting",
+        "antidetect",
+        "woocommerce"
+    ],
+    "homepage": "https://sntlhq.com",
+    "license": "MIT",
+    "type": "library",
+    "authors": [
+        {
+            "name": "Sentinel Edge Networks LTD",
+            "homepage": "https://sntlhq.com"
+        }
+    ],
+    "support": {
+        "docs": "https://sntlhq.com/api",
+        "issues": "https://github.com/sentinelsup/sentinel-php/issues"
+    },
+    "require": {
+        "php": ">=7.4",
+        "ext-json": "*"
+    },
+    "suggest": {
+        "ext-curl": "Preferred transport. Without it the SDK falls back to a stream context."
+    },
+    "autoload": {
+        "psr-4": {
+            "Sentinel\\": "src/"
+        }
+    },
+    "scripts": {
+        "test": "php tests/run.php",
+        "lint": "find src tests examples -name '*.php' -print0 | xargs -0 -n1 php -l"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}
