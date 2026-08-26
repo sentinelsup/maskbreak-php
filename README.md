@@ -1,4 +1,4 @@
-# sentinelsup/sdk — Sentinel PHP SDK
+# sentinelsup/sdk — Maskbreak PHP SDK
 
 Real-time fraud detection for PHP: VPN, residential proxy, Tor, datacenter,
 antidetect browser and automation signals in a single call, typically under
@@ -33,7 +33,7 @@ if ($result->isBlocked()) {
 }
 ```
 
-Get a key free at [sntlhq.com/signup](https://sntlhq.com/signup) — 1,000
+Get a key free at [maskbreak.com/signup](https://maskbreak.com/signup) — 1,000
 requests/hour, no card. Keys start with `sk_live_`.
 
 ## What you get back
@@ -166,7 +166,7 @@ The server call needs a token from the browser collector. One script loads both
 detection layers:
 
 ```html
-<script src="https://sntlhq.com/assets/sentinel.js"></script>
+<script src="https://maskbreak.com/assets/sentinel.js"></script>
 ```
 
 It auto-injects two hidden inputs into your forms:
@@ -215,13 +215,13 @@ php tests/run.php
 ## Rate limits
 
 Free tier: **1,000 requests/hour** per API key. No monthly cap, no credit card.
-Upgrade at [sntlhq.com](https://sntlhq.com) when you need more.
+Upgrade at [maskbreak.com](https://maskbreak.com) when you need more.
 
 ## Related
 
-- [API reference](https://sntlhq.com/api) — reason codes, response fields, stability policy
-- [Node SDK](https://github.com/sentinelsup/sentinel-node) · [Python SDK](https://pypi.org/project/sentinelsup/)
-- [Disposable email detection: flag it, don't block on it](https://sntlhq.com/blog/disposable-email-detection)
+- [API reference](https://maskbreak.com/api) — reason codes, response fields, stability policy
+- [Node SDK](https://github.com/sentinelsup/maskbreak-node) · [Python SDK](https://pypi.org/project/sentinelsup/)
+- [Disposable email detection: flag it, don't block on it](https://maskbreak.com/blog/disposable-email-detection)
 
 ## License
 

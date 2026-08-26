@@ -92,7 +92,7 @@ final class EvaluateResult
      * True when the optional email input landed on a known burner domain.
      *
      * This escalates allow to review on its own and nothing more — see
-     * https://sntlhq.com/blog/disposable-email-detection for why blocking on it
+     * https://maskbreak.com/blog/disposable-email-detection for why blocking on it
      * refuses masked-email relays (iCloud Hide My Email, Firefox Relay).
      */
     public function isDisposableEmail(): bool

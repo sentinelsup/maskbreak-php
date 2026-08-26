@@ -6,7 +6,7 @@ namespace Sentinel;
 
 /**
  * Sentinel PHP SDK — thin, dependency-free wrapper around the Sentinel fraud
- * detection API at https://sntlhq.com/v1/evaluate.
+ * detection API at https://maskbreak.com/v1/evaluate.
  *
  * Usage:
  *
@@ -25,7 +25,7 @@ class Client
 {
     public const VERSION = '0.1.0';
 
-    private const DEFAULT_ENDPOINT = 'https://sntlhq.com';
+    private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
 
     /** @var string */
@@ -63,7 +63,7 @@ class Client
         if ($apiKey === '') {
             throw new SentinelException(
                 'Sentinel: api key is required. Pass it explicitly or set SENTINEL_KEY. '
-                . 'Get one free at https://sntlhq.com/signup'
+                . 'Get one free at https://maskbreak.com/signup'
             );
         }
 

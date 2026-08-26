@@ -32,7 +32,7 @@ add_action('wp_enqueue_scripts', static function (): void {
     if (function_exists('is_checkout') && is_checkout()) {
         wp_enqueue_script(
             'sentinel',
-            'https://sntlhq.com/assets/sentinel.js',
+            'https://maskbreak.com/assets/sentinel.js',
             [],
             null,
             false          // header, not footer: it needs time to resolve before submit

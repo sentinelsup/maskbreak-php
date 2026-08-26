@@ -1,6 +1,6 @@
 {
     "name": "sentinelsup/sdk",
-    "description": "Official PHP SDK for Sentinel — real-time fraud detection, VPN/residential-proxy/antidetect-browser detection in under 40ms.",
+    "description": "Official PHP SDK for Maskbreak — real-time fraud detection, VPN/residential-proxy/antidetect-browser detection in under 40ms.",
     "keywords": [
         "fraud-detection",
         "fraud-prevention",
@@ -11,18 +11,18 @@
         "antidetect",
         "woocommerce"
     ],
-    "homepage": "https://sntlhq.com",
+    "homepage": "https://maskbreak.com",
     "license": "MIT",
     "type": "library",
     "authors": [
         {
             "name": "Sentinel Edge Networks LTD",
-            "homepage": "https://sntlhq.com"
+            "homepage": "https://maskbreak.com"
         }
     ],
     "support": {
-        "docs": "https://sntlhq.com/api",
-        "issues": "https://github.com/sentinelsup/sentinel-php/issues"
+        "docs": "https://maskbreak.com/api",
+        "issues": "https://github.com/sentinelsup/maskbreak-php/issues"
     },
     "require": {
         "php": ">=7.4",
