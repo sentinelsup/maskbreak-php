@@ -23,7 +23,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.1.1';
+    public const VERSION = '0.1.2';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
