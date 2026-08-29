@@ -2,7 +2,7 @@
 
 Real-time fraud detection for PHP: VPN, residential proxy, Tor, datacenter,
 antidetect browser and automation signals in a single call, typically under
-40 ms server-side.
+150 ms server-side.
 
 Zero dependencies. cURL when the extension is available, a stream context when
 it is not, so it installs cleanly on shared hosting.
@@ -215,7 +215,6 @@ php tests/run.php
 ## Rate limits
 
 Free tier: **1,000 requests/hour** per API key. No monthly cap, no credit card.
-Upgrade at [maskbreak.com](https://maskbreak.com) when you need more.
 
 ## Related
 
