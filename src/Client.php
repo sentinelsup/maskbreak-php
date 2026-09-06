@@ -101,7 +101,11 @@ class Client
             }
         }
 
-        return new EvaluateResult($this->request('POST', '/v1/evaluate', $payload));
+        $data = $this->request('POST', '/v1/evaluate', $payload);
+        if (!isset($data['decision']) || !in_array($data['decision'], ['allow', 'review', 'block'], true)) {
+            throw new SentinelException('Sentinel: invalid or missing evaluation decision', null, $data);
+        }
+        return new EvaluateResult($data);
     }
 
     /**
@@ -186,10 +190,8 @@ class Client
             [$status, $raw] = $this->sendWithStream($method, $url, $headers, $body);
         }
 
-        $decoded = ($raw === '') ? [] : json_decode($raw, true);
-        if (!is_array($decoded)) {
-            $decoded = [];
-        }
+        $isObject = is_object(json_decode($raw));
+        $decoded = $isObject ? json_decode($raw, true) : [];
 
         if ($status < 200 || $status >= 300) {
             $detail = isset($decoded['error']) && is_string($decoded['error'])
@@ -200,6 +202,10 @@ class Client
                 $status,
                 $decoded
             );
+        }
+
+        if (!$isObject) {
+            throw new SentinelException('Sentinel: expected a valid JSON object', $status);
         }
 
         return $decoded;

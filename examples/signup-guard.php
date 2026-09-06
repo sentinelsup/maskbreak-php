@@ -31,7 +31,8 @@ try {
     error_log('[sentinel] ' . $e->getMessage() . ' (status: ' . var_export($e->getStatus(), true) . ')');
 }
 
-// No token at all — an ad blocker or CSP failure, not evidence of fraud.
+// Missing evidence has several causes, including deliberate omission. This
+// example opts to fail open on signup; use explicit safeguards for risky actions.
 if ($result === null) {
     create_account($_POST['email']);
     exit;

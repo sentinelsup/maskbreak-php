@@ -6,6 +6,7 @@ declare(strict_types=1);
  * WooCommerce checkout guard — screen orders for VPN, residential proxy,
  * antidetect browser and automation signals before the payment gateway is hit.
  *
+ * Classic shortcode checkout only, not WooCommerce Checkout Blocks/Store API.
  * Drop this in a small site plugin (or your theme's functions.php) and set
  * SENTINEL_KEY in wp-config.php:
  *
@@ -25,8 +26,8 @@ use Sentinel\SentinelException;
 /**
  * Load the collector on checkout only — it has no business on product pages.
  *
- * The script auto-injects the hidden `monocle` and `sentinel_fp` inputs into
- * the checkout form, which WooCommerce posts back with the rest of the fields.
+ * Mark the classic checkout form before the collector's DOMContentLoaded
+ * handler runs; unmarked forms do not receive the hidden device input.
  */
 add_action('wp_enqueue_scripts', static function (): void {
     if (function_exists('is_checkout') && is_checkout()) {
@@ -37,6 +38,13 @@ add_action('wp_enqueue_scripts', static function (): void {
             null,
             false          // header, not footer: it needs time to resolve before submit
         );
+        wp_add_inline_script('sentinel', <<<'JS'
+document.addEventListener('DOMContentLoaded', function () {
+    var form = document.querySelector('form.checkout');
+    if (form) form.classList.add('monocle-enriched');
+});
+JS
+        , 'before');
     }
 });
 
@@ -82,7 +90,7 @@ add_action('woocommerce_after_checkout_validation', static function ($data, $err
     if ($result->isBlocked()) {
         $errors->add(
             'sentinel_blocked',
-            __('We could not verify this connection. Please disable any VPN or proxy and try again.', 'sentinel')
+            __('We could not complete verification. Please contact support.', 'sentinel')
         );
         return;
     }

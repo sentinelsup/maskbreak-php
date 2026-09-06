@@ -1,6 +1,6 @@
 {
     "name": "sentinelsup/sdk",
-    "description": "Official PHP SDK for Maskbreak — real-time fraud detection, VPN/residential-proxy/antidetect-browser detection in under 150ms.",
+    "description": "Official Maskbreak SDK for browser-backed fraud checks and cloud/Tor IP lookups.",
     "keywords": [
         "fraud-detection",
         "fraud-prevention",

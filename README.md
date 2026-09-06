@@ -1,8 +1,9 @@
 # sentinelsup/sdk — Maskbreak PHP SDK
 
-Real-time fraud detection for PHP: VPN, residential proxy, Tor, datacenter,
-antidetect browser and automation signals in a single call, typically under
-150 ms server-side.
+Fraud detection for PHP: evaluate SDK-backed visits for network and browser
+risk signals, or look up bare IPs for cloud-range and Tor evidence. VPN/proxy
+service names are returned when known. A VPN alone routes to review under the
+default policy, not automatic blocking.
 
 Zero dependencies. cURL when the extension is available, a stream context when
 it is not, so it installs cleanly on shared hosting.
@@ -25,6 +26,7 @@ $sentinel = new \Sentinel\Client();   // reads SENTINEL_KEY from the environment
 
 $result = $sentinel->evaluate([
     'token' => $_POST['monocle'],
+    'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
 ]);
 
 if ($result->isBlocked()) {
@@ -32,6 +34,11 @@ if ($result->isBlocked()) {
     exit;
 }
 ```
+
+This is a handler fragment. Route `review` to an explicit verification/review
+flow; only `allow` is approval. Keep the API key server-only. Missing device
+evidence is not a clean browser result, and `raw['degraded']` describes network
+degradation only.
 
 Get a key free at [maskbreak.com/signup](https://maskbreak.com/signup) — 1,000
 requests/hour, no card. Keys start with `sk_live_`.
@@ -68,8 +75,10 @@ switch ($result->decision) {
         return $this->refuse();
     case 'review':
         return $this->stepUp();     // OTP, card check, manual queue
-    default:
+    case 'allow':
         return $this->proceed();
+    default:
+        return $this->holdForReview(); // defensive fallback, not approval
 }
 ```
 
@@ -97,12 +106,14 @@ if ($result->decision === 'review') {
 ### Multi-accounting detection
 
 Pass the account id once the user is known and device-to-account linking turns
-on. Linking is per-merchant and hash-only; devices are never linked across
-customers.
+on when browser device evidence is also supplied. Account linking is
+per-customer and hash-only (`linked_accounts`); device `first_seen`/`times_seen`
+history is not customer-scoped.
 
 ```php
 $result = $sentinel->evaluate([
     'token'     => $_POST['monocle'],
+    'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
     'accountId' => (string) $user->id,
 ]);
 ```
@@ -136,11 +147,17 @@ $out['network'];      // ['asn' => ..., 'org' => ..., 'country' => ...]
 clean bill of health — treating it as one turns every unlisted IP into a
 trusted one.
 
+Production bare-IP lookup checks cloud ranges and Tor exits, not live-visit
+VPN/proxy evidence. The legacy `vpn`/`proxied` keys do not prove those checks
+ran. Use browser-backed `evaluate()` for VPN/proxy checks. Parse client IPs
+through explicitly trusted proxies; never trust arbitrary forwarded headers.
+
 ## Failing open
 
-A detection outage should not become a checkout outage. Catch
-`SentinelException` and let the request through on anything that is not both
-irreversible and high-value:
+Choose fallback behavior per endpoint. The fragment below explicitly opts to
+fail open; it is not a recommendation for withdrawals, transfers, or other
+sensitive mutations. On those routes, pause/step up/queue the action instead.
+Do not treat a timeout as an allow decision or blindly replay a mutation.
 
 ```php
 use Sentinel\SentinelException;
@@ -169,7 +186,15 @@ detection layers:
 <script src="https://maskbreak.com/assets/sentinel.js"></script>
 ```
 
-It auto-injects two hidden inputs into your forms:
+Mark the forms you want enriched; unrelated forms are not automatically enrolled:
+
+```html
+<form class="monocle-enriched" method="post">
+  <!-- your fields -->
+</form>
+```
+
+The collector injects these hidden inputs into marked forms:
 
 | Field | Layer | Send as |
 | --- | --- | --- |
@@ -188,29 +213,48 @@ fingerprinting request evaluates network-only instead of erroring. For SPAs and
 XHR, `await Sentinel.collect()` resolves `{ token, fingerprintEventId }`
 directly.
 
+This synchronous client forwards only `token`, `fingerprintEventId`, `accountId`
+and `email`. It does not expose a timezone input or every REST operation and
+does not provide automatic retries or a circuit breaker. Full additive response
+fields remain in `raw`. Invalid JSON, missing/invalid evaluation decisions,
+transport failures and non-2xx responses raise `SentinelException`; redirects
+are not followed.
+
 ## Testing
 
-Deterministic test tokens exercise every decision path — authenticated and
-rate-limited like real calls, but never billed, stored, or webhooked
-(responses carry `"test": true`):
+Deterministic fixture tokens exercise response handling, not detection quality.
+SDK fixture calls use authentication and quota but do not increment usage or
+fire webhooks. Console-originated live-key fixtures can be stored as test events.
+Responses carry `"test": true`; rules and exception pins can override decisions:
 
 ```php
-$sentinel->evaluate(['token' => 'test_vpn']);     // → review/block path
+$sentinel->evaluate(['token' => 'test_vpn']);     // → review under default policy
 $sentinel->evaluate(['token' => 'test_clean']);   // → allow path
 // also: test_proxy, test_datacenter, test_tor
 ```
 
 - **No account yet?** The public sandbox key `sk_test_sandbox` answers the same
-  `test_*` tokens with the same shapes — no signup, nothing stored.
+  supported `test_*` tokens only — no signup or stored events. It has a separate
+  rate limit, never runs live detection, and is not a production allowance.
 - **CI / staging with real traffic:** every account also has a personal
   `sk_test_…` key (Settings → API Key) that runs the complete live pipeline but
-  flags events as test, excludes them from usage, and never fires webhooks.
+  can store events flagged as test, excludes them from usage, and never fires
+  webhooks. Test keys still have rate limits.
 
-The package's own suite has no dependencies and stubs the network:
+The package's own suite has no library dependencies. Unit tests stub requests;
+transport tests use a loopback fixture server and never call the live API:
 
 ```bash
 php tests/run.php
+php tests/transport.php
+php -d disable_functions=curl_init tests/transport.php
+composer validate --strict
+composer install --no-interaction --no-scripts --no-plugins
+composer lint
 ```
+
+The CI matrix targets PHP 7.4–8.5 without raising the 7.4 minimum. A configured
+matrix is not a claim that every interpreter was tested locally; inspect its run.
 
 ## Rate limits
 

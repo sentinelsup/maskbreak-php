@@ -1,0 +1,32 @@
+name: PHP SDK
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json
+          coverage: none
+          tools: composer:v2
+      - run: composer validate --strict
+      - run: composer install --no-interaction --no-progress --no-scripts --no-plugins
+      - run: composer lint
+      - run: composer test
+      - run: php tests/transport.php
+      - run: php -d disable_functions=curl_init tests/transport.php
+      - name: Verify Composer autoload
+        run: php -r 'require "vendor/autoload.php"; new Sentinel\Client("sk_test_fixture");'
