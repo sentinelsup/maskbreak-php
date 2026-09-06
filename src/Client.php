@@ -304,21 +304,25 @@ class Client
             ],
         ]);
 
-        $raw = @file_get_contents($url, false, $context);
-        if ($raw === false) {
+        $stream = @fopen($url, 'rb', false, $context);
+        if ($stream === false) {
             throw new SentinelException('Sentinel: network error — request to ' . $url . ' failed');
         }
 
-        if (function_exists('http_get_last_response_headers')) {
-            // PHP 8.5+.
-            $responseHeaders = http_get_last_response_headers();
-        } else {
-            // PHP < 8.5: the stream wrapper populates $http_response_header in
-            // this function's local scope. Reached indirectly on purpose —
-            // naming that variable directly emits a compile-time deprecation on
-            // 8.5, which fires even inside a branch that never runs there.
-            $legacy = 'http_response_header';
-            $responseHeaders = isset($$legacy) ? $$legacy : null;
+        try {
+            $raw = @stream_get_contents($stream);
+            $metadata = stream_get_meta_data($stream);
+            if (!empty($metadata['timed_out'])) {
+                throw new SentinelException('Sentinel: request timed out after ' . $this->timeout . 's');
+            }
+            if ($raw === false) {
+                throw new SentinelException('Sentinel: could not read HTTP response body');
+            }
+            // Per-stream headers work on PHP 7.4 through 8.5 without the
+            // deprecated, scope-sensitive $http_response_header variable.
+            $responseHeaders = $metadata['wrapper_data'] ?? null;
+        } finally {
+            fclose($stream);
         }
 
         $status = 0;
