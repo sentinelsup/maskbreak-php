@@ -10,7 +10,7 @@ namespace Sentinel;
  *
  * Usage:
  *
- *     $sentinel = new \Sentinel\Client();   // reads SENTINEL_KEY from the env
+ *     $sentinel = new \Sentinel\Client();   // reads MASKBREAK_API_KEY from the env
  *     $result = $sentinel->evaluate(['token' => $_POST['monocle']]);
  *     if ($result->isBlocked()) {
  *         http_response_code(403);
@@ -23,7 +23,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.1.2';
+    public const VERSION = '0.1.3';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -39,7 +39,8 @@ class Client
 
     /**
      * @param string|null $apiKey  Your API key (starts with sk_live_). Falls back to
-     *                             the SENTINEL_KEY env var, then SENTINEL_API_KEY.
+     *                             the MASKBREAK_API_KEY env var, then the older
+     *                             SENTINEL_KEY, then SENTINEL_API_KEY.
      * @param string      $endpoint Override the API base URL (for tests).
      * @param float       $timeout  Per-request timeout, seconds.
      *
@@ -51,18 +52,23 @@ class Client
         float $timeout = self::DEFAULT_TIMEOUT
     ) {
         if ($apiKey === null || $apiKey === '') {
-            // SENTINEL_KEY is the name every doc surface uses; SENTINEL_API_KEY
-            // is kept for installs that already adopted it.
-            $fromEnv = getenv('SENTINEL_KEY');
-            if ($fromEnv === false || $fromEnv === '') {
-                $fromEnv = getenv('SENTINEL_API_KEY');
+            // MASKBREAK_API_KEY is the name every doc surface uses. SENTINEL_KEY
+            // and SENTINEL_API_KEY are older names, still read so existing
+            // installs keep working; the first non-empty one wins.
+            $apiKey = '';
+            foreach (['MASKBREAK_API_KEY', 'SENTINEL_KEY', 'SENTINEL_API_KEY'] as $name) {
+                $fromEnv = getenv($name);
+                if ($fromEnv !== false && $fromEnv !== '') {
+                    $apiKey = $fromEnv;
+                    break;
+                }
             }
-            $apiKey = ($fromEnv === false) ? '' : $fromEnv;
         }
 
         if ($apiKey === '') {
             throw new SentinelException(
-                'Sentinel: api key is required. Pass it explicitly or set SENTINEL_KEY. '
+                'Sentinel: api key is required. Pass it explicitly or set MASKBREAK_API_KEY '
+                . '(the older SENTINEL_KEY still works). '
                 . 'Get one free at https://maskbreak.com/signup'
             );
         }

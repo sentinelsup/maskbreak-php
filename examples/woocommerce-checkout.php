@@ -8,9 +8,9 @@ declare(strict_types=1);
  *
  * Classic shortcode checkout only, not WooCommerce Checkout Blocks/Store API.
  * Drop this in a small site plugin (or your theme's functions.php) and set
- * SENTINEL_KEY in wp-config.php:
+ * MASKBREAK_API_KEY in wp-config.php:
  *
- *     define('SENTINEL_KEY', 'sk_live_...');
+ *     define('MASKBREAK_API_KEY', 'sk_live_...');
  *
  * Card testing is the abuse this stops: an attacker runs stolen card numbers
  * through your checkout in bulk, and each declined authorisation costs you a
@@ -56,7 +56,7 @@ JS
  * is exactly why a missing token is treated as degraded rather than hostile.
  */
 add_action('woocommerce_after_checkout_validation', static function ($data, $errors): void {
-    if (!defined('SENTINEL_KEY') || SENTINEL_KEY === '') {
+    if (!defined('MASKBREAK_API_KEY') || MASKBREAK_API_KEY === '') {
         return;                                     // not configured: do nothing
     }
 
@@ -72,7 +72,7 @@ add_action('woocommerce_after_checkout_validation', static function ($data, $err
         : '';
 
     try {
-        $sentinel = new Client(SENTINEL_KEY);
+        $sentinel = new Client(MASKBREAK_API_KEY);
         $result = $sentinel->evaluate([
             'token'              => $token,
             'fingerprintEventId' => $fingerprint,

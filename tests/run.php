@@ -115,27 +115,63 @@ final class StubClient extends Client
 
 // ── Construction ────────────────────────────────────────────────────────────
 
-check('constructor rejects an empty key', function (): void {
+/** Clear every key variable the constructor reads. */
+function clearKeyEnv(): void
+{
+    putenv('MASKBREAK_API_KEY');
     putenv('SENTINEL_KEY');
     putenv('SENTINEL_API_KEY');
+}
+
+/** The key a Client resolved, read from its private property. */
+function resolvedKey(Client $client): string
+{
+    $property = new \ReflectionProperty(Client::class, 'apiKey');
+    if (PHP_VERSION_ID < 80100) {
+        $property->setAccessible(true);   // a no-op from 8.1, deprecated in 8.5
+    }
+    return $property->getValue($client);
+}
+
+check('constructor rejects an empty key', function (): void {
+    clearKeyEnv();
     assertThrows('api key is required', function (): void {
         new Client('');
     });
+    assertThrows('set MASKBREAK_API_KEY', function (): void {
+        new Client();
+    });
 });
 
-check('constructor reads SENTINEL_KEY from the environment', function (): void {
-    putenv('SENTINEL_KEY=sk_live_from_env');
-    $client = new Client();
-    assertTrue($client instanceof Client);
-    putenv('SENTINEL_KEY');
+check('constructor reads MASKBREAK_API_KEY from the environment', function (): void {
+    clearKeyEnv();
+    putenv('MASKBREAK_API_KEY=sk_live_from_env');
+    assertSameValue('sk_live_from_env', resolvedKey(new Client()));
+    clearKeyEnv();
+});
+
+check('constructor still reads the older SENTINEL_KEY', function (): void {
+    clearKeyEnv();
+    putenv('SENTINEL_KEY=sk_live_old');
+    assertSameValue('sk_live_old', resolvedKey(new Client()));
+    clearKeyEnv();
 });
 
 check('constructor falls back to SENTINEL_API_KEY', function (): void {
-    putenv('SENTINEL_KEY');
+    clearKeyEnv();
     putenv('SENTINEL_API_KEY=sk_live_legacy');
-    $client = new Client();
-    assertTrue($client instanceof Client);
-    putenv('SENTINEL_API_KEY');
+    assertSameValue('sk_live_legacy', resolvedKey(new Client()));
+    clearKeyEnv();
+});
+
+check('MASKBREAK_API_KEY wins over the older names; an explicit key wins over all', function (): void {
+    clearKeyEnv();
+    putenv('MASKBREAK_API_KEY=sk_live_new');
+    putenv('SENTINEL_KEY=sk_live_old');
+    putenv('SENTINEL_API_KEY=sk_live_legacy');
+    assertSameValue('sk_live_new', resolvedKey(new Client()));
+    assertSameValue('sk_live_explicit', resolvedKey(new Client('sk_live_explicit')));
+    clearKeyEnv();
 });
 
 // ── evaluate() ──────────────────────────────────────────────────────────────

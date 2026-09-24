@@ -15,7 +15,7 @@ require_once __DIR__ . '/../vendor/autoload.php';
 use Sentinel\Client;
 use Sentinel\SentinelException;
 
-$sentinel = new Client();   // reads SENTINEL_KEY
+$sentinel = new Client();   // reads MASKBREAK_API_KEY
 
 $result = null;
 try {

@@ -22,7 +22,7 @@ Requires PHP 7.4 or newer.
 <?php
 require 'vendor/autoload.php';
 
-$sentinel = new \Sentinel\Client();   // reads SENTINEL_KEY from the environment
+$sentinel = new \Sentinel\Client();   // reads MASKBREAK_API_KEY from the environment
 
 $result = $sentinel->evaluate([
     'token' => $_POST['monocle'],
@@ -42,6 +42,9 @@ degradation only.
 
 Get a key free at [maskbreak.com/signup](https://maskbreak.com/signup) — 1,000
 requests/hour, no card. Keys start with `sk_live_`.
+
+Since v0.1.3, `new \Sentinel\Client()` without a key reads `MASKBREAK_API_KEY`;
+the older `SENTINEL_KEY` and `SENTINEL_API_KEY` names are still read as fallbacks.
 
 ## What you get back
 
