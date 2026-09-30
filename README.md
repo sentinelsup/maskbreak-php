@@ -18,21 +18,35 @@ Requires PHP 7.4 or newer.
 
 ## Quick start
 
+Add `<script async src="https://maskbreak.com/assets/sentinel.js"></script>` to
+the page with your form and `class="monocle-enriched"` to the form: it adds two
+hidden fields on submit, `monocle` and `sentinel_fp`. Your server forwards them:
+
 ```php
 <?php
 require 'vendor/autoload.php';
 
 $sentinel = new \Sentinel\Client();   // reads MASKBREAK_API_KEY from the environment
 
-$result = $sentinel->evaluate([
-    'token' => $_POST['monocle'],
-    'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
-]);
+// Start in watch mode: log Maskbreak's answer and let everyone through.
+// When Events look right, set MASKBREAK_MODE=enforce and redeploy.
+$mode = getenv('MASKBREAK_MODE') ?: 'watch';
 
-if ($result->isBlocked()) {
-    http_response_code(403);
+$result = null;
+try {
+    $result = $sentinel->evaluate([
+        'token' => $_POST['monocle'] ?? '',
+        'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
+    ]);
+    error_log('[maskbreak] ' . $mode . ' ' . $result->decision);
+} catch (\Sentinel\SentinelException $e) {
+    error_log('[maskbreak] ' . $mode . ' check unavailable: ' . $e->getMessage());
+}
+if ($mode === 'enforce' && (!$result || $result->decision !== 'allow')) {
+    http_response_code($result && $result->isBlocked() ? 403 : 409);
     exit;
 }
+// Watch mode, or an allow: continue with your existing handler.
 ```
 
 This is a handler fragment. Route `review` to an explicit verification/review
@@ -243,9 +257,10 @@ $sentinel->evaluate(['token' => 'test_clean']);   // → allow path
   supported `test_*` tokens only — no signup or stored events. It has a separate
   rate limit, never runs live detection, and is not a production allowance.
 - **CI / staging with real traffic:** every account also has a personal
-  `sk_test_…` key (Settings → API Key) that runs the complete live pipeline but
-  can store events flagged as test, excludes them from usage, and never fires
-  webhooks. Test keys still have rate limits.
+  `sk_test_…` key (Settings → API keys) that runs the complete live pipeline.
+  Its events are stored flagged as test, kept out of your stats and never fire
+  webhooks; its checks count toward the monthly allowance (the fixed `test_*`
+  tokens do not). Test keys still have rate limits.
 
 The package's own suite has no library dependencies. Unit tests stub requests;
 transport tests use a loopback fixture server and never call the live API:
