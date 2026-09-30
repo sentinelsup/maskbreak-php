@@ -40,8 +40,8 @@ flow; only `allow` is approval. Keep the API key server-only. Missing device
 evidence is not a clean browser result, and `raw['degraded']` describes network
 degradation only.
 
-Get a key free at [maskbreak.com/signup](https://maskbreak.com/signup) — 1,000
-requests/hour, no card. Keys start with `sk_live_`.
+Get a key free at [maskbreak.com/signup](https://maskbreak.com/signup) — the Free
+plan includes 10,000 visitor checks a month, no card. Keys start with `sk_live_`.
 
 Since v0.1.3, `new \Sentinel\Client()` without a key reads `MASKBREAK_API_KEY`;
 the older `SENTINEL_KEY` and `SENTINEL_API_KEY` names are still read as fallbacks.
@@ -178,7 +178,10 @@ if ($result !== null && $result->isBlocked()) {
 ```
 
 `SentinelException::getStatus()` returns the HTTP status (null on transport
-failures) and `getBody()` the decoded error payload.
+failures) and `getBody()` the decoded error payload. A `503` whose body has
+`"code": "storage_unavailable"` means the key could not be checked at that
+moment; it is not an invalid key (that is `401`), so retry later and apply your
+outage policy meanwhile.
 
 ## Frontend setup
 
@@ -261,7 +264,7 @@ matrix is not a claim that every interpreter was tested locally; inspect its run
 
 ## Rate limits
 
-Free tier: **1,000 requests/hour** per API key. No monthly cap, no credit card.
+Visitor checks (`evaluate()`) are counted per calendar month in UTC, with an hourly cap: **Free — 10,000 a month, up to 1,000 an hour, no credit card**; paid plans from €29 a month ([pricing](https://maskbreak.com/pricing)). IP lookups (`lookup()`) have their own monthly allowance, 10× the plan's checks (100,000 on Free). A used-up month answers `429` with `code: "monthly_quota_exceeded"` and `Retry-After` until the 1st; there are no overage charges.
 
 ## Related
 
