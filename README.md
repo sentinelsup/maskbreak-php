@@ -104,18 +104,22 @@ switch ($result->decision) {
 ### Guard a signup, with the burner-email signal
 
 ```php
-$result = $sentinel->evaluate([
-    'token' => $_POST['monocle'],
-    'email' => $_POST['email'],   // transient — never stored or logged
-]);
+try {
+    $result = $sentinel->evaluate([
+        'token' => $_POST['monocle'] ?? '',
+        'email' => $_POST['email'] ?? '',   // transient — never stored or logged
+    ]);
+} catch (\Sentinel\SentinelException $e) {
+    $result = null;   // no token, or the call failed: see "Failing open"
+}
 
-if ($result->isBlocked()) {
+if ($result !== null && $result->isBlocked()) {
     return $this->reject('Signup unavailable.');
 }
 
 // A burner domain escalates allow to review on its own. Step up, don't refuse:
 // masked-email relays (iCloud Hide My Email, Firefox Relay) look identical.
-if ($result->decision === 'review') {
+if ($result !== null && $result->decision === 'review') {
     $this->requireEmailVerification($user);
 }
 ```
@@ -236,9 +240,9 @@ directly.
 This synchronous client forwards only `token`, `fingerprintEventId`, `accountId`
 and `email`. It does not expose a timezone input or every REST operation and
 does not provide automatic retries or a circuit breaker. Full additive response
-fields remain in `raw`. Invalid JSON, missing/invalid evaluation decisions,
-transport failures and non-2xx responses raise `SentinelException`; redirects
-are not followed.
+fields remain in `raw`. An empty or missing `token`, invalid JSON, missing/invalid
+evaluation decisions, transport failures and non-2xx responses raise
+`SentinelException`; redirects are not followed.
 
 ## Testing
 

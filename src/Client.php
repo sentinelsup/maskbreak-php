@@ -11,8 +11,12 @@ namespace Sentinel;
  * Usage:
  *
  *     $sentinel = new \Sentinel\Client();   // reads MASKBREAK_API_KEY from the env
- *     $result = $sentinel->evaluate(['token' => $_POST['monocle']]);
- *     if ($result->isBlocked()) {
+ *     try {
+ *         $result = $sentinel->evaluate(['token' => $_POST['monocle'] ?? '']);
+ *     } catch (\Sentinel\SentinelException $e) {
+ *         $result = null;   // no token, or the call failed: your fallback here
+ *     }
+ *     if ($result !== null && $result->isBlocked()) {
  *         http_response_code(403);
  *         exit;
  *     }
@@ -23,7 +27,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.1.5';
+    public const VERSION = '0.1.6';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -118,7 +122,8 @@ class Client
      * Look up an arbitrary public IP address — no browser token needed.
      *
      * Useful for log enrichment, batch scoring, and screening server-to-server
-     * callers. Shares the per-key hourly quota with evaluate().
+     * callers. Shares the hourly quota with evaluate() (one per account for the
+     * live keys; the test key has its own) and has its own monthly allowance.
      *
      * Note: `known === false` means our feeds hold no data for the address. It
      * is NOT a clean bill of health.

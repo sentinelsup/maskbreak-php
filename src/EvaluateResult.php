@@ -43,7 +43,7 @@ final class EvaluateResult
     /** @var string|null The engine's own answer, when custom rules or pins overrode `decision`. */
     public $engineDecision;
 
-    /** @var bool True on test-token / test-key responses. Never billed. */
+    /** @var bool True on test-token / test-key responses. Test-key checks count toward the monthly allowance; the fixed test_* tokens never count. */
     public $test;
 
     /** @var array<string,mixed> The untouched response body. */
