@@ -18,9 +18,40 @@ Requires PHP 7.4 or newer.
 
 ## Quick start
 
-Add `<script async src="https://maskbreak.com/assets/sentinel.js"></script>` to
-the page with your form and `class="monocle-enriched"` to the form: it adds two
-hidden fields on submit, `monocle` and `sentinel_fp`. Your server forwards them:
+Three steps give you the first complete check, one that carries both the
+network token and the browser check. The Maskbreak dashboard's setup uses the
+same names.
+
+**1. Add the script to the page with your form**, and `class="monocle-enriched"`
+to the `<form>` element itself (never to an input):
+
+```html
+<script async src="https://maskbreak.com/assets/sentinel.js"></script>
+
+<form class="monocle-enriched" method="post" action="/signup.php">
+  <!-- your fields; the script adds monocle, sentinel_fp and sentinel_tz -->
+</form>
+```
+
+Your site sends a Content-Security-Policy header? A policy that does not list
+Maskbreak's hosts blocks the script: helmet's default policy in Express does,
+and so does any `default-src 'self'` policy. Add
+[the list](https://maskbreak.com/integrate.md#content-security-policy) to it.
+The hidden fields fill in a second or two after the page loads.
+
+**2. Send the check from your server.** One field mapping, whichever way the
+browser part sends it:
+
+| Form field | `Sentinel.collect()` returns | Send to the API as |
+| --- | --- | --- |
+| `monocle` (network token) | `token` | `token` |
+| `sentinel_fp` (browser check) | `fingerprintEventId` | `fingerprintEventId` |
+| `sentinel_tz` (time zone) | `tz` | `tz` (optional; plain HTTP only, see below) |
+
+Start in watch mode: every submission is checked and logged, a submission with
+a missing field included (the dashboard then says which half did not arrive),
+and nobody is blocked. `evaluate()` will not send a request without the network
+token, so the quick start reports those submissions over plain HTTP:
 
 ```php
 <?php
@@ -32,27 +63,56 @@ $sentinel = new \Sentinel\Client();   // reads MASKBREAK_API_KEY from the enviro
 // When Events look right, set MASKBREAK_MODE=enforce and redeploy.
 $mode = getenv('MASKBREAK_MODE') ?: 'watch';
 
-$result = null;
-try {
-    $result = $sentinel->evaluate([
-        'token' => $_POST['monocle'] ?? '',
-        'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
-    ]);
-    error_log('[maskbreak] ' . $mode . ' ' . $result->decision);
-} catch (\Sentinel\SentinelException $e) {
-    error_log('[maskbreak] ' . $mode . ' check unavailable: ' . $e->getMessage());
+// evaluate() refuses to send without the network token. In watch mode a
+// submission without it is reported anyway, so the dashboard can say so.
+function maskbreak_report_without_token(array $fields): ?array
+{
+    $context = stream_context_create(['http' => [
+        'method' => 'POST',
+        'timeout' => 5,
+        'ignore_errors' => true,
+        'header' => 'Authorization: Bearer ' . getenv('MASKBREAK_API_KEY') . "\r\n"
+            . "Content-Type: application/json\r\n",
+        'content' => json_encode((object) array_filter($fields)),
+    ]]);
+    $body = @file_get_contents('https://maskbreak.com/v1/evaluate', false, $context);
+    $data = is_string($body) ? json_decode($body, true) : null;
+    return is_array($data) ? $data : null;
 }
-if ($mode === 'enforce' && (!$result || $result->decision !== 'allow')) {
-    http_response_code($result && $result->isBlocked() ? 403 : 409);
+
+// Form fields -> API names. Sentinel.collect() sends JSON with the API names.
+$in = json_decode(file_get_contents('php://input') ?: '', true);
+$in = is_array($in) ? $in : $_POST;
+$token = $in['token'] ?? $in['monocle'] ?? '';
+$eventId = $in['fingerprintEventId'] ?? $in['sentinel_fp'] ?? '';
+$tz = $in['tz'] ?? $in['sentinel_tz'] ?? '';
+
+$decision = null;
+try {
+    if ($token !== '') {
+        $decision = $sentinel->evaluate(['token' => $token, 'fingerprintEventId' => $eventId])->decision;
+    } elseif ($mode !== 'enforce') {
+        $decision = maskbreak_report_without_token(['fingerprintEventId' => $eventId, 'tz' => $tz])['decision'] ?? null;
+    }
+} catch (\Sentinel\SentinelException $e) {
+    error_log('[maskbreak] check unavailable: ' . $e->getMessage());
+}
+error_log('[maskbreak] ' . $mode . ' ' . ($decision ?? 'no answer'));
+if ($mode === 'enforce' && $decision !== 'allow') {
+    http_response_code($decision === 'block' ? 403 : 409);
     exit;
 }
 // Watch mode, or an allow: continue with your existing handler.
 ```
 
+**3. Submit your form once.** Deploy, open the page and submit the form. The
+first check then appears in the dashboard (Integration tab and Events).
+
 This is a handler fragment. Route `review` to an explicit verification/review
 flow; only `allow` is approval. Keep the API key server-only. Missing device
 evidence is not a clean browser result, and `raw['degraded']` describes network
-degradation only.
+degradation only. The full enforce policy (review, missing evidence, test and
+degraded answers) is in [integrate.md](https://maskbreak.com/integrate.md).
 
 Get a key free at [maskbreak.com/signup](https://maskbreak.com/signup) — the Free
 plan includes 10,000 visitor checks a month, no card. Keys start with `sk_live_`.
@@ -104,10 +164,12 @@ switch ($result->decision) {
 ### Guard a signup, with the burner-email signal
 
 ```php
+// $token and $eventId come from the quick start's field mapping.
 try {
     $result = $sentinel->evaluate([
-        'token' => $_POST['monocle'] ?? '',
-        'email' => $_POST['email'] ?? '',   // transient — never stored or logged
+        'token' => $token,
+        'fingerprintEventId' => $eventId,
+        'email' => $in['email'] ?? '',   // transient — never stored or logged
     ]);
 } catch (\Sentinel\SentinelException $e) {
     $result = null;   // no token, or the call failed: see "Failing open"
@@ -133,9 +195,9 @@ history is not customer-scoped.
 
 ```php
 $result = $sentinel->evaluate([
-    'token'     => $_POST['monocle'],
-    'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
-    'accountId' => (string) $user->id,
+    'token'              => $token,     // the quick start's field mapping
+    'fingerprintEventId' => $eventId,
+    'accountId'          => (string) $user->id,
 ]);
 ```
 
@@ -203,14 +265,15 @@ outage policy meanwhile.
 
 ## Frontend setup
 
-The server call needs a token from the browser collector. One script loads both
-detection layers:
+The server call needs the evidence the browser collector adds. One script on
+the page with your form loads both detection layers:
 
 ```html
-<script src="https://maskbreak.com/assets/sentinel.js"></script>
+<script async src="https://maskbreak.com/assets/sentinel.js"></script>
 ```
 
-Mark the forms you want enriched; unrelated forms are not automatically enrolled:
+Mark the forms you want enriched, with the class on the `<form>` itself (never
+on an input); unrelated forms are not automatically enrolled:
 
 ```html
 <form class="monocle-enriched" method="post">
@@ -218,24 +281,35 @@ Mark the forms you want enriched; unrelated forms are not automatically enrolled
 </form>
 ```
 
-The collector injects these hidden inputs into marked forms:
+The collector adds these hidden inputs to marked forms:
 
 | Field | Layer | Send as |
 | --- | --- | --- |
 | `monocle` | Network (VPN, proxy, Tor, datacenter) | `token` |
 | `sentinel_fp` | Device (antidetect, automation, tampering) | `fingerprintEventId` |
-
-```php
-$result = $sentinel->evaluate([
-    'token'              => $_POST['monocle'] ?? '',
-    'fingerprintEventId' => $_POST['sentinel_fp'] ?? '',
-]);
-```
+| `sentinel_tz` | Browser time zone | `tz` (optional) |
 
 The device layer degrades to null rather than failing, so a blocked
-fingerprinting request evaluates network-only instead of erroring. For SPAs and
-XHR, `await Sentinel.collect()` resolves `{ token, fingerprintEventId }`
-directly.
+fingerprinting request evaluates network-only instead of erroring. A form your
+JavaScript submits (fetch, React, Next.js, Vue) sends `Sentinel.collect()`'s
+result with its own data instead; the quick start reads that JSON too. Check
+that the script is there, and never hold the form because of it:
+
+```js
+const evidence = window.Sentinel ? await window.Sentinel.collect() : {};
+await fetch('/signup.php', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  // evidence = { token, fingerprintEventId, tz }, already the API's names
+  body: JSON.stringify({ email: form.email.value, ...evidence })
+});
+```
+
+The integration guide has the same flow as a
+[Next.js App Router example](https://maskbreak.com/integrate.md) (client
+component and Route Handler), and the
+[Content-Security-Policy sources](https://maskbreak.com/integrate.md#content-security-policy)
+the script needs.
 
 This synchronous client forwards only `token`, `fingerprintEventId`, `accountId`
 and `email`. It does not expose a timezone input or every REST operation and
