@@ -105,8 +105,9 @@ if ($mode === 'enforce' && $decision !== 'allow') {
 // Watch mode, or an allow: continue with your existing handler.
 ```
 
-**3. Submit your form once.** Deploy, open the page and submit the form. The
-first check then appears in the dashboard (Integration tab and Events).
+**3. Submit your form once.** Run your app where you can open the page, on
+your computer or on your site, and submit the form once. The first check then
+appears in the dashboard (Integration tab and Events).
 
 This is a handler fragment. Route `review` to an explicit verification/review
 flow; only `allow` is approval. Keep the API key server-only. Missing device

@@ -25,7 +25,7 @@ final class EvaluateResult
     /** @var string|null 2-letter country code. */
     public $country;
 
-    /** @var array<string,mixed> vpn, proxy, datacenter, anonymous, tor, residential, service. */
+    /** @var array<string,mixed> vpn, proxy, privacy_relay, datacenter, anonymous, tor, residential, service. */
     public $network;
 
     /** @var array<string,mixed> Device signals, populated when fingerprintEventId was sent. */
