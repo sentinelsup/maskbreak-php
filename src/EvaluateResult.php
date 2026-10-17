@@ -52,8 +52,12 @@ final class EvaluateResult
     /**
      * @param array<string,mixed> $data
      */
-    public function __construct(array $data)
+    /** @var bool */
+    private $allowTestResults;
+
+    public function __construct(array $data, bool $allowTestResults = false)
     {
+        $this->allowTestResults = $allowTestResults;
         $this->decision = isset($data['decision']) ? (string) $data['decision'] : null;
         $this->riskScore = isset($data['risk_score']) ? (int) $data['risk_score'] : null;
         $this->ip = isset($data['ip']) ? (string) $data['ip'] : null;
@@ -75,7 +79,22 @@ final class EvaluateResult
      */
     public function isBlocked(): bool
     {
+        // Since 0.2.0 a test, sandbox or sample answer counts as blocked: the
+        // fixed test tokens are public, so a visitor can type one into your
+        // form field. A client made with $allowTestResults = true lets it pass.
+        if ($this->isFixture() && !$this->allowTestResults) {
+            return true;
+        }
         return $this->decision === 'block';
+    }
+
+    /**
+     * True for a test-token, test-key, sandbox or sample answer: a pretend
+     * visitor, never this one. Never let it authorize a real action.
+     */
+    public function isFixture(): bool
+    {
+        return $this->test || !empty($this->raw['sample']) || !empty($this->raw['sandbox']);
     }
 
     /**

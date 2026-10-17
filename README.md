@@ -90,7 +90,9 @@ $tz = $in['tz'] ?? $in['sentinel_tz'] ?? '';
 $decision = null;
 try {
     if ($token !== '') {
-        $decision = $sentinel->evaluate(['token' => $token, 'fingerprintEventId' => $eventId])->decision;
+        $result = $sentinel->evaluate(['token' => $token, 'fingerprintEventId' => $eventId]);
+        // A test or sample answer is never a real visitor's verdict: anyone can send a test token.
+        $decision = $result->isFixture() ? null : $result->decision;
     } elseif ($mode !== 'enforce') {
         $decision = maskbreak_report_without_token(['fingerprintEventId' => $eventId, 'tz' => $tz])['decision'] ?? null;
     }
@@ -134,7 +136,8 @@ $result->device;              // populated when fingerprintEventId was sent
 $result->country;             // 'DE'
 $result->raw;                 // the untouched response body
 
-$result->isBlocked();         // decision === 'block'
+$result->isBlocked();         // decision === 'block', or (since 0.2.0) a test/sandbox/sample answer
+$result->isFixture();         // true for a test-token, test-key, sandbox or sample answer
 $result->isSuspicious();      // decision !== 'allow'
 $result->isDisposableEmail(); // burner domain, when an email was supplied
 ```

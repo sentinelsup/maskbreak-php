@@ -237,6 +237,28 @@ check('result maps the documented fields', function (): void {
     assertTrue($result->isDisposableEmail());
 });
 
+check('a test, sandbox or sample answer counts as blocked unless the client allows test results', function (): void {
+    foreach (['test', 'sample', 'sandbox'] as $marker) {
+        $result = new EvaluateResult(['decision' => 'allow', $marker => true]);
+        assertSameValue(true, $result->isFixture(), $marker);
+        assertSameValue(true, $result->isBlocked(), $marker . ': a public test token never lets a visitor through');
+    }
+    assertSameValue(false, (new EvaluateResult(['decision' => 'allow', 'test' => true], true))->isBlocked(), 'opted in for its own tests');
+    assertSameValue(false, (new EvaluateResult(['decision' => 'allow']))->isFixture());
+});
+
+check('the API key is trimmed, and a key with a break or a space inside is refused without echo', function (): void {
+    assertSameValue('sk_live_abc', resolvedKey(new Client("  sk_live_abc\n")));
+    foreach (["sk_live_a\r\nX-Injected: 1", "sk_live_a b", "sk_live_a\0b"] as $bad) {
+        try {
+            new Client($bad);
+            throw new RuntimeException('expected a refusal');
+        } catch (\Sentinel\SentinelException $e) {
+            assertTrue(strpos($e->getMessage(), 'sk_live_a') === false, 'the key is not echoed');
+        }
+    }
+});
+
 check('isBlocked is true only for block', function (): void {
     assertSameValue(false, (new EvaluateResult(['decision' => 'allow']))->isBlocked());
     assertSameValue(false, (new EvaluateResult(['decision' => 'review']))->isBlocked());

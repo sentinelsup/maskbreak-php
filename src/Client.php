@@ -27,7 +27,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.1.8';
+    public const VERSION = '0.2.0';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -41,19 +41,28 @@ class Client
     /** @var float Per-request timeout in seconds. */
     private $timeout;
 
+    /** @var bool Let shouldBlock()/isBlocked() pass test, sandbox and sample answers. */
+    private $allowTestResults;
+
     /**
      * @param string|null $apiKey  Your API key (starts with sk_live_). Falls back to
      *                             the MASKBREAK_API_KEY env var, then the older
      *                             SENTINEL_KEY, then SENTINEL_API_KEY.
      * @param string      $endpoint Override the API base URL (for tests).
      * @param float       $timeout  Per-request timeout, seconds.
+     * @param bool        $allowTestResults Only for your own test runs: since 0.2.0
+     *                             a test, sandbox or sample answer counts as blocked
+     *                             (the fixed test tokens are public, so a visitor can
+     *                             send one); true lets it through.
      *
-     * @throws SentinelException when no key can be resolved.
+     * @throws SentinelException when no key can be resolved, or it holds a space or
+     *                           a control character (the key is never echoed).
      */
     public function __construct(
         ?string $apiKey = null,
         string $endpoint = self::DEFAULT_ENDPOINT,
-        float $timeout = self::DEFAULT_TIMEOUT
+        float $timeout = self::DEFAULT_TIMEOUT,
+        bool $allowTestResults = false
     ) {
         if ($apiKey === null || $apiKey === '') {
             // MASKBREAK_API_KEY is the name every doc surface uses. SENTINEL_KEY
@@ -69,6 +78,8 @@ class Client
             }
         }
 
+        // Trimmed: a key read from a file or a secret often ends in a line break.
+        $apiKey = trim($apiKey);
         if ($apiKey === '') {
             throw new SentinelException(
                 'Sentinel: api key is required. Pass it explicitly or set MASKBREAK_API_KEY '
@@ -76,10 +87,19 @@ class Client
                 . 'Get one free at https://maskbreak.com/signup'
             );
         }
+        // A line break inside would start a header of its own in the stream
+        // fallback; never echo the value.
+        if (preg_match('/[\s\x00-\x1f\x7f]/', $apiKey)) {
+            throw new SentinelException(
+                'Sentinel: the API key contains a space, a line break or another control character. '
+                . 'Copy it again from the dashboard (Settings, API keys).'
+            );
+        }
 
         $this->apiKey = $apiKey;
         $this->endpoint = rtrim($endpoint, '/');
         $this->timeout = $timeout;
+        $this->allowTestResults = $allowTestResults;
     }
 
     /**
@@ -115,7 +135,7 @@ class Client
         if (!isset($data['decision']) || !in_array($data['decision'], ['allow', 'review', 'block'], true)) {
             throw new SentinelException('Sentinel: invalid or missing evaluation decision', null, $data);
         }
-        return new EvaluateResult($data);
+        return new EvaluateResult($data, $this->allowTestResults);
     }
 
     /**
@@ -159,6 +179,10 @@ class Client
     public function shouldBlock(array $input, ?callable $predicate = null): bool
     {
         $result = $this->evaluate($input);
+        // A test, sandbox or sample answer is never a real visitor's verdict.
+        if (!$this->allowTestResults && $result->isFixture()) {
+            return true;
+        }
 
         return $predicate === null ? $result->isBlocked() : (bool) $predicate($result);
     }
