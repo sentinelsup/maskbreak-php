@@ -27,7 +27,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.2.0';
+    public const VERSION = '0.2.1';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -108,7 +108,9 @@ class Client
      * @param array<string,mixed> $input {
      *     @var string $token               Required. Client-side token from the frontend SDK.
      *     @var string $fingerprintEventId  Optional device event id for device signals.
-     *     @var string $accountId           Optional account id — enables multi-accounting detection.
+     *     @var string $accountId           Optional account id, from your server-side session — enables
+     *                                      multi-accounting detection and, with a live key, the
+     *                                      `account` object (account network).
      *     @var string $email               Optional signup email. Adds `email.disposable`;
      *                                      checked transiently, never stored or logged.
      * }

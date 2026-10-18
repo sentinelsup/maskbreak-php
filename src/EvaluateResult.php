@@ -37,6 +37,9 @@ final class EvaluateResult
     /** @var array<string,mixed>|null {disposable: bool} — present only when an email was sent. */
     public $email;
 
+    /** @var array<string,mixed>|null The account network (since 0.2.1): present when accountId was sent with a live key. */
+    public $account;
+
     /** @var string|null 'rules' | 'exception' when something other than the engine authored the decision. */
     public $decisionSource;
 
@@ -66,6 +69,7 @@ final class EvaluateResult
         $this->device = isset($data['device']) && is_array($data['device']) ? $data['device'] : [];
         $this->reasons = isset($data['reasons']) && is_array($data['reasons']) ? array_values($data['reasons']) : [];
         $this->email = isset($data['email']) && is_array($data['email']) ? $data['email'] : null;
+        $this->account = isset($data['account']) && is_array($data['account']) ? $data['account'] : null;
         $this->decisionSource = isset($data['decision_source']) ? (string) $data['decision_source'] : null;
         $this->engineDecision = isset($data['engine_decision']) ? (string) $data['engine_decision'] : null;
         $this->test = !empty($data['test']);

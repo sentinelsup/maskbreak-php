@@ -134,6 +134,7 @@ $result->reasons;             // ['vpn_detected', 'disposable_email', ...]
 $result->network;             // ['vpn' => true, 'proxy' => false, 'tor' => false, ...]
 $result->device;              // populated when fingerprintEventId was sent
 $result->country;             // 'DE'
+$result->account;             // the account network (since 0.2.1), when accountId was sent with a live key
 $result->raw;                 // the untouched response body
 
 $result->isBlocked();         // decision === 'block', or (since 0.2.0) a test/sandbox/sample answer
@@ -192,10 +193,16 @@ if ($result !== null && $result->decision === 'review') {
 
 ### Multi-accounting detection
 
-Pass the account id once the user is known and device-to-account linking turns
-on when browser device evidence is also supplied. Account linking is
-per-customer and hash-only (`linked_accounts`); device `first_seen`/`times_seen`
-history is not customer-scoped.
+Pass the account id once the user is known (from your server-side session, never
+a form field) and device-to-account linking turns on when browser device evidence
+is also supplied. Account linking is per-customer and stored as keyed hashes
+(`linked_accounts`); device `first_seen`/`times_seen` history is not
+customer-scoped. With a live key the response also carries `$result->account`
+(the account network, since 18 October 2026): devices per account, your accounts
+per device and per address in 24 hours, `new_device`, and the accounts it shares
+a device or an address with; `device_many_accounts` (3+ of your accounts on one
+device within 24 hours) raises an allow to review. Maskbreak also keeps the
+account id encrypted so your console can show which accounts are linked.
 
 ```php
 $result = $sentinel->evaluate([

@@ -226,6 +226,7 @@ check('result maps the documented fields', function (): void {
         'email' => ['disposable' => true],
         'engine_decision' => 'allow',
         'decision_source' => 'rules',
+        'account' => ['seen_before' => true, 'device_accounts_24h' => 3],
     ]);
 
     assertSameValue('review', $result->decision);
@@ -234,6 +235,8 @@ check('result maps the documented fields', function (): void {
     assertSameValue(['vpn_detected', 'disposable_email'], $result->reasons);
     assertSameValue('allow', $result->engineDecision);
     assertSameValue('rules', $result->decisionSource);
+    assertSameValue(['seen_before' => true, 'device_accounts_24h' => 3], $result->account);
+    assertSameValue(null, (new EvaluateResult(['decision' => 'allow']))->account, 'no account object unless the API sends one');
     assertTrue($result->isDisposableEmail());
 });
 
