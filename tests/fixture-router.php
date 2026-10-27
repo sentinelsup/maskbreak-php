@@ -7,7 +7,15 @@ $bodies = [
     'list' => '[]', 'scalar' => '42', 'missing' => '{}',
     'unknown' => '{"decision":"unexpected"}',
 ];
-if ($case === 'error') {
+if ($case === 'setup') {
+    // What the SDK sent, so the test can check the method, path and key header.
+    echo json_encode(['status' => 'waiting', 'complete' => false, 'method' => $_SERVER['REQUEST_METHOD'],
+        'path' => parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), 'auth' => $_SERVER['HTTP_AUTHORIZATION'] ?? null,
+        'body' => file_get_contents('php://input')]);
+} elseif ($case === 'echo') {
+    // The request body as received, beside a decision so evaluate() accepts the answer.
+    echo json_encode(['decision' => 'allow', 'received' => json_decode((string) file_get_contents('php://input'), true)]);
+} elseif ($case === 'error') {
     http_response_code(429);
     echo '{"error":"Try later"}';
 } elseif ($case === 'redirect') {

@@ -36,7 +36,8 @@ try {
         throw new RuntimeException('Loopback fixture server did not start');
     }
     $client = static function (string $case) use ($address): Sentinel\Client {
-        return new Sentinel\Client('sk_test_fixture', 'http://' . $address . '/' . $case, 2.0);
+        // The missing-browser-part warning is tests/run.php's subject, not this file's.
+        return new Sentinel\Client('sk_test_fixture', 'http://' . $address . '/' . $case, 2.0, false, false);
     };
     $result = $client('valid')->evaluate(['token' => 'fixture']);
     if ($result->decision !== 'review' || $result->isBlocked() || !$result->raw['future_field']) {
@@ -57,6 +58,21 @@ try {
             $passed++;
         }
     }
+    // A User-Agent with bytes that are not UTF-8 (bots send them) still gets a check.
+    $echo = $client('echo')->evaluate(['token' => 'fixture', 'fingerprintEventId' => 'evt', 'event' => 'login',
+        'accountId' => 'u', 'loginSucceeded' => false, 'userAgent' => "Bot\xff\xfe/1.0"]);
+    $received = $echo->raw['received'] ?? null;
+    if (!is_array($received) || $received['userAgent'] !== "Bot\u{FFFD}\u{FFFD}/1.0" || $received['loginSucceeded'] !== false
+        || $received['event'] !== 'login') {
+        throw new RuntimeException('the payload must survive bytes that are not UTF-8: ' . json_encode($received));
+    }
+    $passed++;
+    $setup = $client('setup')->setupStatus();
+    if ($setup['status'] !== 'waiting' || $setup['method'] !== 'GET' || $setup['path'] !== '/setup/v1/setup'
+        || $setup['auth'] !== 'Bearer sk_test_fixture' || $setup['body'] !== '') {
+        throw new RuntimeException('setupStatus must GET /v1/setup with the key and no body: ' . json_encode($setup));
+    }
+    $passed++;
     echo $passed . ' transport checks passed (' . (function_exists('curl_init') ? 'cURL' : 'stream') . ")\n";
 } finally {
     proc_terminate($process);

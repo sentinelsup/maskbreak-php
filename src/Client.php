@@ -27,10 +27,56 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.2.1';
+    public const VERSION = '0.3.0';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
+
+    /**
+     * The values `event` takes (login protection, since 23 October 2026). The
+     * API reads the name case-insensitively and ignores any other value without
+     * a word, so a typo such as "signin" would run the check without login
+     * protection: evaluate() refuses it instead (0.3.0).
+     */
+    private const EVENTS = ['login', 'signup', 'password_change', 'verification', 'logout', 'account_change'];
+
+    /**
+     * Account events a server reports on its own, often with no page in front
+     * of it: the API records them without the visit's network token. A login
+     * and a signup are visits and still need the token.
+     */
+    private const TOKENLESS_EVENTS = ['password_change', 'verification', 'logout', 'account_change'];
+
+    /** Fields with a fixed list of values: the list, and what the API does with any other value. */
+    private const CHOICES = [
+        'event' => [self::EVENTS, 'the API ignores any other value, and the check would run without login protection'],
+        'reason' => [['user', 'forgot', 'forced'], 'the API reads any other value as user'],
+        'verificationType' => [['email', 'sms', 'phone_call', 'app', 'push', 'security_key', 'captcha'], 'the API ignores any other value'],
+        'verifiedEvent' => [['login', 'signup', 'password_change', 'account_change'], 'the API ignores any other value'],
+    ];
+
+    /** The API reads only a real boolean here; anything else silently becomes "not known". */
+    private const BOOLEANS = ['loginSucceeded', 'succeeded'];
+
+    /** The API reads these only when they are strings. */
+    private const STRINGS = ['tz', 'phone', 'userAgent', 'ip'];
+
+    /** The API drops a longer session ID without a word (the device stands in for the session). */
+    private const MAX_SESSION_ID = 256;
+
+    /**
+     * Checks that arrive without the browser part (the dashboard's
+     * missing_device) are a broken integration that is easy to miss. Never
+     * carries the key or anything about the visitor.
+     */
+    private const MISSING_BROWSER_PART = 'Sentinel: a check was sent without fingerprintEventId, so Maskbreak checks it '
+        . 'without the browser part (bots, fake browsers and emulators go unchecked): keep the script on the page '
+        . 'with your form and forward its sentinel_fp field (or the fingerprintEventId from Sentinel.collect()) as '
+        . 'fingerprintEventId. Shown once per process; new \Sentinel\Client(warnMissingBrowserPart: false) or '
+        . '$client->warnMissingBrowserPart(false) turns it off.';
+
+    /** @var bool Whether this process has written the missing-browser-part warning. */
+    private static $missingBrowserPartWarned = false;
 
     /** @var string */
     private $apiKey;
@@ -44,6 +90,9 @@ class Client
     /** @var bool Let shouldBlock()/isBlocked() pass test, sandbox and sample answers. */
     private $allowTestResults;
 
+    /** @var bool Write the one-time missing-browser-part warning (0.3.0). */
+    private $warnMissingBrowserPart;
+
     /**
      * @param string|null $apiKey  Your API key (starts with sk_live_). Falls back to
      *                             the MASKBREAK_API_KEY env var, then the older
@@ -54,6 +103,11 @@ class Client
      *                             a test, sandbox or sample answer counts as blocked
      *                             (the fixed test tokens are public, so a visitor can
      *                             send one); true lets it through.
+     * @param bool        $warnMissingBrowserPart False turns off the one-time line in
+     *                             PHP's error log for a check sent without
+     *                             fingerprintEventId (since 0.3.0). On PHP 7.4, which
+     *                             has no named arguments, warnMissingBrowserPart(false)
+     *                             does the same.
      *
      * @throws SentinelException when no key can be resolved, or it holds a space or
      *                           a control character (the key is never echoed).
@@ -62,7 +116,8 @@ class Client
         ?string $apiKey = null,
         string $endpoint = self::DEFAULT_ENDPOINT,
         float $timeout = self::DEFAULT_TIMEOUT,
-        bool $allowTestResults = false
+        bool $allowTestResults = false,
+        bool $warnMissingBrowserPart = true
     ) {
         if ($apiKey === null || $apiKey === '') {
             // MASKBREAK_API_KEY is the name every doc surface uses. SENTINEL_KEY
@@ -100,37 +155,149 @@ class Client
         $this->endpoint = rtrim($endpoint, '/');
         $this->timeout = $timeout;
         $this->allowTestResults = $allowTestResults;
+        $this->warnMissingBrowserPart = $warnMissingBrowserPart;
+    }
+
+    /**
+     * Turn the one-time missing-browser-part warning on or off (since 0.3.0):
+     * the constructor's $warnMissingBrowserPart, for code that does not pass
+     * every argument before it (PHP 7.4 has no named arguments).
+     *
+     *     $sentinel = (new \Sentinel\Client())->warnMissingBrowserPart(false);
+     */
+    public function warnMissingBrowserPart(bool $on): self
+    {
+        $this->warnMissingBrowserPart = $on;
+        return $this;
     }
 
     /**
      * Evaluate a visitor session for fraud signals.
      *
+     * Every key but `token` is optional and sent only when given (not null or
+     * ''), under the same name. A value the API would ignore or misread (an
+     * unknown `event`, a `loginSucceeded` that is not a bool, ...) throws a
+     * SentinelException before anything is sent.
+     *
      * @param array<string,mixed> $input {
-     *     @var string $token               Required. Client-side token from the frontend SDK.
-     *     @var string $fingerprintEventId  Optional device event id for device signals.
-     *     @var string $accountId           Optional account id, from your server-side session — enables
-     *                                      multi-accounting detection and, with a live key, the
-     *                                      `account` object (account network).
-     *     @var string $email               Optional signup email. Adds `email.disposable`;
-     *                                      checked transiently, never stored or logged.
+     *     @var string      $token              Client-side token from the frontend SDK. Required, except
+     *                                          for the account events password_change, verification,
+     *                                          logout and account_change (0.3.0).
+     *     @var string      $fingerprintEventId Optional device event id for device signals. Without it
+     *                                          the check has no browser part, and the SDK writes one
+     *                                          line to PHP's error log (see warnMissingBrowserPart).
+     *     @var string|int  $accountId          Optional account id, from your server-side session — enables
+     *                                          multi-accounting detection and, with a live key, the
+     *                                          `account` object (account network). Login protection
+     *                                          needs it with `event`.
+     *     @var string      $email              Optional signup email. Adds `email.disposable`; with email
+     *                                          and phone intelligence on, also checked, score, risk and
+     *                                          signals. Never stored or logged.
+     *     @var string      $tz                 The visitor's IANA time zone (`tz` from Sentinel.collect(),
+     *                                          or the form's sentinel_tz field). Adds `timezone` (0.3.0).
+     *     @var string      $phone              The visitor's phone number in international format; with
+     *                                          email and phone intelligence on, adds `phone` (0.3.0).
+     *     @var string      $event              Login protection (0.3.0): login, signup, password_change,
+     *                                          verification, logout or account_change.
+     *     @var bool        $loginSucceeded     With event login: whether the credential was right.
+     *     @var bool        $succeeded          With password_change or verification: whether it
+     *                                          succeeded (absent means pending).
+     *     @var string|int  $sessionId          With an event: your session ID, at most 256 characters.
+     *                                          Only a keyed hash of it leaves Maskbreak.
+     *     @var string      $userAgent          With an event: the User-Agent header your server received.
+     *     @var string      $ip                 With an event: the visitor's address as your server saw
+     *                                          it, used only when the network token gave none.
+     *     @var string      $reason             With password_change: user, forgot or forced.
+     *     @var string      $verificationType   With verification: email, sms, phone_call, app, push,
+     *                                          security_key or captcha.
+     *     @var string      $verifiedEvent      With verification: login, signup, password_change or
+     *                                          account_change.
      * }
      *
-     * @throws SentinelException on a missing token, network failure, timeout, or non-2xx.
+     * @throws SentinelException on a missing token (outside the four account events), a value
+     *                           the API would ignore or misread, network failure, timeout, or non-2xx.
      */
     public function evaluate(array $input): EvaluateResult
     {
-        $token = isset($input['token']) ? $input['token'] : null;
-        if (!is_string($token) || $token === '') {
-            throw new SentinelException(
-                'Sentinel::evaluate: token (client-side Sentinel token) is required'
-            );
+        // Fixed lists first: the event decides whether the token may be left out.
+        $picked = [];
+        foreach (self::CHOICES as $name => [$allowed, $otherwise]) {
+            if (!self::given($input[$name] ?? null)) {
+                continue;
+            }
+            $value = is_string($input[$name]) ? strtolower(trim($input[$name])) : null;
+            if ($value === null || !in_array($value, $allowed, true)) {
+                throw new SentinelException(
+                    'Sentinel::evaluate: ' . $name . ' must be one of ' . implode(', ', $allowed) . '; ' . $otherwise . '.'
+                );
+            }
+            $picked[$name] = $value;
         }
 
-        $payload = ['token' => $token];
+        $accountEvent = isset($picked['event']) && in_array($picked['event'], self::TOKENLESS_EVENTS, true);
+        $token = $input['token'] ?? null;
+        if (!self::given($token) && !$accountEvent) {
+            throw new SentinelException(
+                'Sentinel::evaluate: token (client-side Sentinel token) is required (only the account events '
+                . 'password_change, verification, logout and account_change can be sent without it)'
+            );
+        }
+        if (self::given($token) && !is_string($token)) {
+            throw new SentinelException('Sentinel::evaluate: token (client-side Sentinel token) must be a string');
+        }
+
+        $payload = [];
+        if (self::given($token)) {
+            $payload['token'] = $token;
+        }
         foreach (['fingerprintEventId', 'accountId', 'email'] as $key) {
             if (isset($input[$key]) && $input[$key] !== '') {
                 $payload[$key] = $input[$key];
             }
+        }
+        foreach (self::STRINGS as $key) {
+            if (!self::given($input[$key] ?? null)) {
+                continue;
+            }
+            if (!is_string($input[$key])) {
+                throw new SentinelException('Sentinel::evaluate: ' . $key . ' must be a string.');
+            }
+            $payload[$key] = $input[$key];
+        }
+        if (isset($picked['event'])) {
+            $payload['event'] = $picked['event'];
+        }
+        foreach (self::BOOLEANS as $key) {
+            if (!self::given($input[$key] ?? null)) {
+                continue;
+            }
+            if (!is_bool($input[$key])) {
+                throw new SentinelException('Sentinel::evaluate: ' . $key . ' must be true or false.');
+            }
+            $payload[$key] = $input[$key];
+        }
+        if (self::given($input['sessionId'] ?? null)) {
+            $id = $input['sessionId'];
+            if (!(is_string($id) || is_int($id)) || self::charCount(trim((string) $id)) > self::MAX_SESSION_ID) {
+                throw new SentinelException(
+                    'Sentinel::evaluate: sessionId must be a string or an int of at most ' . self::MAX_SESSION_ID
+                    . ' characters; for a longer session value, send a shorter ID for the session (a hash of it, for example).'
+                );
+            }
+            $payload['sessionId'] = $id;
+        }
+        foreach (['reason', 'verificationType', 'verifiedEvent'] as $key) {
+            if (isset($picked[$key])) {
+                $payload[$key] = $picked[$key];
+            }
+        }
+
+        // Account events may come from server code with no page in front of
+        // them, and the fixed test_* tokens never carry a browser part;
+        // anything else without it is a broken integration, said once.
+        if ($this->warnMissingBrowserPart && !$accountEvent && !self::given($input['fingerprintEventId'] ?? null)
+            && !(is_string($token) && strncmp($token, 'test_', 5) === 0)) {
+            $this->warnMissingBrowserPartOnce();
         }
 
         $data = $this->request('POST', '/v1/evaluate', $payload);
@@ -167,6 +334,35 @@ class Client
     }
 
     /**
+     * Whether your integration's checks arrive complete, and what to fix next
+     * (GET /v1/setup, since 0.3.0).
+     *
+     * Submit your form once, then call it: it says whether that check arrived
+     * with both parts and, when not, what to change. Works with the live key
+     * and the test key. The answer is returned as the API sends it.
+     *
+     * `status` is what the latest check showed: waiting (no check in the last 7 days, and none complete before),
+     * complete (both parts, live key), missing_network (no network token),
+     * network_unavailable (a token that could not be read), missing_device (no
+     * browser event id), device_unavailable (a browser event that could not be
+     * verified), test_mode (a test token, or the test key without both parts),
+     * test_complete (the test key with both parts: swap in the live key),
+     * ip_restricted, rate_limited or request_failed.
+     *
+     * @return array{status: string, complete: bool, message: string, next_step: string|null,
+     *               last_check_at: string|null, complete_checks: int, last_complete_at: string|null,
+     *               website: array{confirmed: bool, origin: string|null},
+     *               script_seen: array{origin: string, at: string}|null, site_id: string|null,
+     *               key_type: string, docs: string}
+     *
+     * @throws SentinelException on network failure, timeout, or non-2xx.
+     */
+    public function setupStatus(): array
+    {
+        return $this->request('GET', '/v1/setup', null);
+    }
+
+    /**
      * Convenience helper: true when the session should be refused.
      *
      * Defaults to the API's own `decision === 'block'`, which honors dashboard
@@ -190,6 +386,53 @@ class Client
     }
 
     /**
+     * Where the SDK's one warning goes: PHP's error log, through error_log().
+     *
+     * Not trigger_error(): an E_USER_NOTICE runs through the application's
+     * error handler, which Laravel and Symfony (in debug) turn into an
+     * exception and WordPress with WP_DEBUG_DISPLAY prints into the page, so a
+     * warning could break the very request it is about. error_log() only
+     * writes the line to the configured log (stderr from the command line).
+     *
+     * Protected so tests can capture it.
+     */
+    protected function warn(string $message): void
+    {
+        error_log($message);
+    }
+
+    /**
+     * The missing-browser-part warning, the first time in this process only
+     * (PHP-FPM and mod_php start every request afresh, so there it is once per
+     * request).
+     */
+    private function warnMissingBrowserPartOnce(): void
+    {
+        if (self::$missingBrowserPartWarned) {
+            return;
+        }
+        self::$missingBrowserPartWarned = true;
+        $this->warn(self::MISSING_BROWSER_PART);
+    }
+
+    /**
+     * A key counts as given unless it is missing, null or ''.
+     *
+     * @param mixed $value
+     */
+    private static function given($value): bool
+    {
+        return $value !== null && $value !== '';
+    }
+
+    /** Characters (code points) of a UTF-8 string, bytes when it is not valid UTF-8. */
+    private static function charCount(string $value): int
+    {
+        $count = @preg_match_all('/./su', $value);
+        return is_int($count) ? $count : strlen($value);
+    }
+
+    /**
      * Shared transport: auth header, timeout, JSON handling, error mapping.
      *
      * Protected so tests can stub the network without a live endpoint.
@@ -206,7 +449,11 @@ class Client
         $body = null;
 
         if ($payload !== null) {
-            $body = json_encode($payload);
+            // A visitor's User-Agent (or a typed email or phone) can hold bytes
+            // that are not UTF-8, and plain json_encode() refuses the whole
+            // payload then: such a request would answer an exception instead
+            // of a check (0.3.0). Those bytes become U+FFFD instead.
+            $body = json_encode($payload, JSON_INVALID_UTF8_SUBSTITUTE);
             if ($body === false) {
                 throw new SentinelException('Sentinel: could not encode request payload as JSON');
             }
