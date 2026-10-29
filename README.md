@@ -660,7 +660,7 @@ matrix is not a claim that every interpreter was tested locally; inspect its run
 
 ## Rate limits
 
-Visitor checks (`evaluate()`) are counted per calendar month in UTC, with an hourly cap: **Free — 10,000 a month, up to 1,000 an hour, no credit card**; paid plans from €29 a month ([pricing](https://maskbreak.com/pricing)). IP lookups (`lookup()`) have their own monthly allowance, 10× the plan's checks (100,000 on Free). A used-up month answers `429` with `code: "monthly_quota_exceeded"` and `Retry-After` until the 1st; there are no overage charges. The quick start lets the action through on that answer and logs it, in enforce mode too, so running out never takes your form offline.
+Visitor checks (`evaluate()`) are counted per calendar month in UTC, with no hourly cap: **Free — 10,000 a month, no credit card**; paid plans from €29 a month ([pricing](https://maskbreak.com/pricing)). IP lookups (`lookup()`) have their own monthly allowance, 10× the plan's checks (100,000 on Free). A used-up month answers `429` with `code: "monthly_quota_exceeded"` and `Retry-After` until the 1st; there are no overage charges. The quick start lets the action through on that answer and logs it, in enforce mode too, so running out never takes your form offline.
 
 ## Related
 
