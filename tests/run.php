@@ -554,8 +554,8 @@ check('the new answer fields land on the result', function (): void {
     assertSameValue(true, $sandbox->isBlocked(), 'a sandbox answer still counts as blocked');
 });
 
-check('the client says 0.3.0', function (): void {
-    assertSameValue('0.3.0', Client::VERSION);
+check('the client says 0.3.1', function (): void {
+    assertSameValue('0.3.1', Client::VERSION);
 });
 
 echo "\n{$passed} passed, {$failed} failed\n";

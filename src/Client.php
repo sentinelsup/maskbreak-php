@@ -27,7 +27,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.3.0';
+    public const VERSION = '0.3.1';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -311,8 +311,8 @@ class Client
      * Look up an arbitrary public IP address — no browser token needed.
      *
      * Useful for log enrichment, batch scoring, and screening server-to-server
-     * callers. Shares the hourly quota with evaluate() (one per account for the
-     * live keys; the test key has its own) and has its own monthly allowance.
+     * callers. Has its own monthly allowance, 10x the plan's checks (no plan
+     * has an hourly limit since 2026-10-29).
      *
      * Note: `known === false` means our feeds hold no data for the address. It
      * is NOT a clean bill of health.
