@@ -27,7 +27,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.3.1';
+    public const VERSION = '0.3.2';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -65,6 +65,18 @@ class Client
     private const MAX_SESSION_ID = 256;
 
     /**
+     * A token made only of the characters JavaScript's String.prototype.trim()
+     * removes. POST /v1/evaluate reads such a token as no token at all and
+     * answers it with the degraded allow it gives a missing one, so it is
+     * missing here too (0.3.2): the visitor chooses that field's value, and a
+     * space must not turn the refusal of a missing token into an allow. PHP's
+     * trim() is ASCII-only (it misses U+00A0 and U+FEFF, and strips NUL, which
+     * the API reads as a token), so the set is written out.
+     */
+    private const BLANK_TOKEN = '/\A[\x{0009}-\x{000D}\x{0020}\x{00A0}\x{1680}\x{2000}-\x{200A}'
+        . '\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]*\z/u';
+
+    /**
      * Checks that arrive without the browser part (the dashboard's
      * missing_device) are a broken integration that is easy to miss. Never
      * carries the key or anything about the visitor.
@@ -87,7 +99,7 @@ class Client
     /** @var float Per-request timeout in seconds. */
     private $timeout;
 
-    /** @var bool Let shouldBlock()/isBlocked() pass test, sandbox and sample answers. */
+    /** @var bool Let shouldBlock(), isBlocked() and isSuspicious() pass test, sandbox and sample answers. */
     private $allowTestResults;
 
     /** @var bool Write the one-time missing-browser-part warning (0.3.0). */
@@ -101,8 +113,9 @@ class Client
      * @param float       $timeout  Per-request timeout, seconds.
      * @param bool        $allowTestResults Only for your own test runs: since 0.2.0
      *                             a test, sandbox or sample answer counts as blocked
-     *                             (the fixed test tokens are public, so a visitor can
-     *                             send one); true lets it through.
+     *                             (since 0.3.2 also as suspicious; the fixed test
+     *                             tokens are public, so a visitor can send one);
+     *                             true lets it through.
      * @param bool        $warnMissingBrowserPart False turns off the one-time line in
      *                             PHP's error log for a check sent without
      *                             fingerprintEventId (since 0.3.0). On PHP 7.4, which
@@ -182,7 +195,8 @@ class Client
      * @param array<string,mixed> $input {
      *     @var string      $token              Client-side token from the frontend SDK. Required, except
      *                                          for the account events password_change, verification,
-     *                                          logout and account_change (0.3.0).
+     *                                          logout and account_change (0.3.0). A token that is only
+     *                                          whitespace counts as missing, as the API reads it (0.3.2).
      *     @var string      $fingerprintEventId Optional device event id for device signals. Without it
      *                                          the check has no browser part, and the SDK writes one
      *                                          line to PHP's error log (see warnMissingBrowserPart).
@@ -214,8 +228,9 @@ class Client
      *                                          account_change.
      * }
      *
-     * @throws SentinelException on a missing token (outside the four account events), a value
-     *                           the API would ignore or misread, network failure, timeout, or non-2xx.
+     * @throws SentinelException on a missing, empty or whitespace-only token (outside the four
+     *                           account events), a value the API would ignore or misread, network
+     *                           failure, timeout, or non-2xx.
      */
     public function evaluate(array $input): EvaluateResult
     {
@@ -236,6 +251,9 @@ class Client
 
         $accountEvent = isset($picked['event']) && in_array($picked['event'], self::TOKENLESS_EVENTS, true);
         $token = $input['token'] ?? null;
+        if (is_string($token) && preg_match(self::BLANK_TOKEN, $token) === 1) {
+            $token = null;   // the API reads it as no token; a real token is sent unchanged
+        }
         if (!self::given($token) && !$accountEvent) {
             throw new SentinelException(
                 'Sentinel::evaluate: token (client-side Sentinel token) is required (only the account events '
@@ -347,7 +365,9 @@ class Client
      * browser event id), device_unavailable (a browser event that could not be
      * verified), test_mode (a test token, or the test key without both parts),
      * test_complete (the test key with both parts: swap in the live key),
-     * ip_restricted, rate_limited or request_failed.
+     * ip_restricted, rate_limited (an hourly limit; no account has one since
+     * 2026-10-29), monthly_quota_exceeded (this month's checks are used up,
+     * since 2026-10-27) or request_failed.
      *
      * @return array{status: string, complete: bool, message: string, next_step: string|null,
      *               last_check_at: string|null, complete_checks: int, last_complete_at: string|null,

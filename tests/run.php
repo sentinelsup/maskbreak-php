@@ -281,6 +281,47 @@ check('isSuspicious is true for anything that is not allow', function (): void {
     assertSameValue(true, (new EvaluateResult(['decision' => 'block']))->isSuspicious());
 });
 
+check('a test, sandbox or sample answer counts as suspicious unless the client allows test results (0.3.2)', function (): void {
+    // The visitor chooses the token: test_clean answers allow with test: true on
+    // a live key, so isSuspicious() on a withdrawal or transfer must not read it
+    // as clean. It follows isBlocked() and shouldBlock().
+    foreach (['test', 'sample', 'sandbox'] as $marker) {
+        foreach (['allow', 'review', 'block'] as $decision) {
+            $result = new EvaluateResult(['decision' => $decision, $marker => true]);
+            assertSameValue(true, $result->isSuspicious(), $marker . ' ' . $decision . ': a public test token is never clean');
+            $own = new EvaluateResult(['decision' => $decision, $marker => true], true);
+            assertSameValue($decision !== 'allow', $own->isSuspicious(), $marker . ' ' . $decision . ': opted in, the decision decides');
+        }
+    }
+    // Through evaluate(): the client hands its own setting to the result.
+    $forged = ['decision' => 'allow', 'test' => true, 'isSuspicious' => false, 'risk_score' => 0, 'reasons' => []];
+    $client = new StubClient($forged);
+    $result = $client->evaluate(['token' => 'test_clean']);
+    assertSameValue(true, $result->isSuspicious(), 'evaluate() result of test_clean');
+    assertSameValue(true, $client->shouldBlock(['token' => 'test_clean'], static function (EvaluateResult $r): bool {
+        return $r->isSuspicious();
+    }));
+    $ownClient = new class ($forged) extends Client {
+        /** @var array<string,mixed> */
+        private $answer;
+        /** @param array<string,mixed> $answer */
+        public function __construct(array $answer)
+        {
+            parent::__construct('sk_live_stub', 'https://maskbreak.com', 5.0, true, false);
+            $this->answer = $answer;
+        }
+        protected function request(string $method, string $path, ?array $payload): array
+        {
+            return $this->answer;
+        }
+    };
+    assertSameValue(false, $ownClient->evaluate(['token' => 'test_clean'])->isSuspicious(), 'opted in: an allow stays an allow');
+    // The fields are the API's, unchanged.
+    assertSameValue('allow', $result->decision);
+    assertSameValue(true, $result->test);
+    assertSameValue(false, $result->raw['isSuspicious']);
+});
+
 check('a missing decision is neither blocked nor suspicious', function (): void {
     $result = new EvaluateResult([]);
     assertSameValue(false, $result->isBlocked());
@@ -437,6 +478,36 @@ check('the four account events go without a token; a login, a signup and a plain
     }
 });
 
+// 0.3.2: the API reads a token that is blank after JavaScript's trim() as no
+// token and answers a degraded allow; a visitor who sent a space turned the
+// refusal of a missing token into that allow.
+check('a token that is only whitespace counts as missing; a real token is sent unchanged', function (): void {
+    $blanks = [' ', "\t\n", "\u{00A0}", "\u{FEFF}", "\u{2028}", "\u{3000}",
+        " \u{00A0}\t\u{FEFF}\r\n\x0B\f\u{1680}\u{2000}\u{200A}\u{202F}\u{205F} "];
+    foreach ($blanks as $token) {
+        foreach ([['token' => $token, 'fingerprintEventId' => 'evt'], ['token' => $token, 'event' => 'login', 'accountId' => 'u']] as $input) {
+            $client = new StubClient(['decision' => 'allow', 'degraded' => true], 200, false);
+            assertThrows('token (client-side Sentinel token) is required', function () use ($client, $input): void {
+                $client->evaluate($input);
+            });
+            assertThrows('token (client-side Sentinel token) is required', function () use ($client, $input): void {
+                $client->shouldBlock($input);
+            });
+            assertSameValue(null, $client->lastMethod, 'nothing sent for ' . json_encode($token));
+        }
+    }
+    // An account event may go without the token: a blank one is left out, as none.
+    $client = new StubClient(['decision' => 'allow'], 200, false);
+    $client->evaluate(['event' => 'logout', 'accountId' => 'u_42', 'token' => " \u{00A0}"]);
+    assertSameValue(['accountId' => 'u_42', 'event' => 'logout'], $client->lastPayload);
+    // A token the API reads as a token goes as given: padded, or a character
+    // JavaScript's trim() keeps (PHP's trim() would drop the NUL).
+    foreach ([' tok ', "\u{200B}", "\u{180E}", "\u{0085}", "\x1C", "\0"] as $token) {
+        $client->evaluate(['token' => $token, 'fingerprintEventId' => 'evt']);
+        assertSameValue($token, $client->lastPayload['token'] ?? null, 'sent as given: ' . json_encode($token));
+    }
+});
+
 check('a check without fingerprintEventId warns once per process, without the key, and the option turns it off', function (): void {
     resetMissingBrowserPartWarning();
     $client = new StubClient(['decision' => 'allow']);
@@ -554,8 +625,8 @@ check('the new answer fields land on the result', function (): void {
     assertSameValue(true, $sandbox->isBlocked(), 'a sandbox answer still counts as blocked');
 });
 
-check('the client says 0.3.1', function (): void {
-    assertSameValue('0.3.1', Client::VERSION);
+check('the client says 0.3.2', function (): void {
+    assertSameValue('0.3.2', Client::VERSION);
 });
 
 echo "\n{$passed} passed, {$failed} failed\n";

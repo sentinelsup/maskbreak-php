@@ -168,9 +168,17 @@ final class EvaluateResult
      * True for anything that is not a clean allow. Appropriate on irreversible,
      * high-value actions (withdrawal, transfer, promotion redemption) — not on
      * ordinary signup, where it refuses everything you meant to step up.
+     *
+     * Since 0.3.2 a test, sandbox or sample answer counts as suspicious too, as
+     * in isBlocked(): a visitor can type a public test token such as test_clean
+     * into your form field and get an allow back. A client made with
+     * $allowTestResults = true lets the decision decide.
      */
     public function isSuspicious(): bool
     {
+        if ($this->isFixture() && !$this->allowTestResults) {
+            return true;
+        }
         return $this->decision !== null && $this->decision !== 'allow';
     }
 

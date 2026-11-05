@@ -92,7 +92,8 @@ try {
     if ($token !== '') {
         $result = $sentinel->evaluate(['token' => $token, 'fingerprintEventId' => $eventId, 'tz' => $tz]);
         // A test or sample answer is never a real visitor's verdict: anyone can send a test token.
-        $decision = $result->isFixture() ? null : $result->decision;
+        // A degraded answer is one the network check could not run for: no verdict either.
+        $decision = ($result->isFixture() || $result->degraded) ? null : $result->decision;
     } elseif ($mode !== 'enforce') {
         $decision = maskbreak_report_without_token(['fingerprintEventId' => $eventId, 'tz' => $tz])['decision'] ?? null;
     }
@@ -128,6 +129,25 @@ Since v0.1.3, `new \Sentinel\Client()` without a key reads `MASKBREAK_API_KEY`;
 the older `SENTINEL_KEY` and `SENTINEL_API_KEY` names are still read as fallbacks.
 
 ## What's new
+
+### 0.3.2
+
+- A `token` that is only whitespace (a space, a tab, a line break, U+00A0,
+  U+FEFF) counts as missing: `evaluate()` and `shouldBlock()` throw a
+  `SentinelException`, as for no token, and nothing is sent. The API reads such
+  a token as no token and answers a degraded allow, so a visitor who typed a
+  space into the token field turned the refusal of a missing token into an
+  allow. A real token is sent unchanged.
+- The quick start and the login example hold a degraded answer
+  (`$result->degraded`) in enforce mode, as
+  [integrate.md](https://maskbreak.com/integrate.md) does: it had no network
+  check.
+- `$result->isSuspicious()` is `true` for a test, sandbox or sample answer, as
+  `isBlocked()` and `shouldBlock()` have been since 0.2.0. A visitor could type
+  a public test token such as `test_clean` into your form field and get an
+  allow, and `isSuspicious()`, called on the result of `evaluate()`, read that
+  answer as clean. A client made with `$allowTestResults = true` lets the
+  decision decide, for your own test runs.
 
 ### 0.3.0 (2026-10-27)
 
@@ -182,7 +202,7 @@ $result->evaluatedInMs;
 
 $result->isBlocked();         // decision === 'block', or (since 0.2.0) a test/sandbox/sample answer
 $result->isFixture();         // true for a test-token, test-key, sandbox or sample answer
-$result->isSuspicious();      // decision !== 'allow'
+$result->isSuspicious();      // decision !== 'allow', or (since 0.3.2) a test/sandbox/sample answer
 $result->isDisposableEmail(); // burner domain, when an email was supplied
 ```
 
@@ -246,7 +266,12 @@ customer-scoped. With a live key the response also carries `$result->account`
 per device and per address in 24 hours, `new_device`, and the accounts it shares
 a device or an address with; `device_many_accounts` (3+ of your accounts on one
 device within 24 hours) raises an allow to review. Maskbreak also keeps the
-account id encrypted so your console can show which accounts are linked.
+account id encrypted so your console can show which accounts are linked. At
+sign-in, send it once the credential was accepted, or with `'event' => 'login'`
+and `loginSucceeded`: since 5 November 2026 a check with `event` `login`,
+`verification` or `password_change` whose `loginSucceeded` (or `succeeded`) is
+not `true` counts as a sign-in attempt, which adds nothing to the account's own
+devices or addresses.
 
 ```php
 $result = $sentinel->evaluate([
@@ -337,8 +362,8 @@ if ($mode === 'enforce' && !$monthUsedUp) {
         http_response_code(403);
         exit;
     }
-    // Review, no answer or a test answer: a second factor, not a refusal.
-    if ($result === null || $result->decision !== 'allow' || $result->isFixture()) {
+    // Review, no answer, a degraded or a test answer: a second factor, not a refusal.
+    if ($result === null || $result->decision !== 'allow' || $result->degraded || $result->isFixture()) {
         send_second_factor($user);
         exit;
     }
@@ -363,6 +388,13 @@ sign_in($user);   // your existing session code
   `accountId`. Its score learns from the logins of every Maskbreak customer
   who uses login protection; say so in your own privacy notice. A login
   counts as a normal check.
+- `$result->account` (the account network) reads a login whose
+  `loginSucceeded` is not `true` as an attempt, since 5 November 2026: it
+  counts in `device_accounts_24h` and `ip_accounts_24h`, never in that
+  account's own devices, addresses or connected accounts. Send
+  `loginSucceeded` with every login check, and at sign-in send `accountId`
+  only on a check made after the credential was accepted or on this login
+  check.
 
 ### A signup with email and phone
 
@@ -470,7 +502,9 @@ nothing is sent: an `event` other than `login`, `signup`, `password_change`,
 outside its list, a `loginSucceeded` or `succeeded` that is not `true` or
 `false`, a `tz`, `phone`, `userAgent` or `ip` that is not a string, and a
 `sessionId` that is not a string or an int or is longer than 256 characters.
-A key that is missing, `null` or `''` is left out of the request.
+A key that is missing, `null` or `''` is left out of the request. A `token`
+that is only whitespace (a space, a tab, a line break, U+00A0, U+FEFF) counts
+as missing, as the API reads it (since 0.3.2).
 
 ### The missing-browser-part warning
 
@@ -505,7 +539,7 @@ if ($setup['next_step'] !== null) {
 
 | Key | What it says |
 | --- | --- |
-| `status` | What the latest check showed: `waiting` (no check in the last 7 days, and none complete before), `complete` (both parts, live key), `missing_network` (no network token), `network_unavailable` (a token that could not be read), `missing_device` (no browser event id), `device_unavailable` (a browser event that could not be verified), `test_mode` (a test token, or the test key without both parts), `test_complete` (the test key with both parts: swap in the live key), `ip_restricted`, `rate_limited` or `request_failed` |
+| `status` | What the latest check showed: `waiting` (no check in the last 7 days, and none complete before), `complete` (both parts, live key), `missing_network` (no network token), `network_unavailable` (a token that could not be read), `missing_device` (no browser event id), `device_unavailable` (a browser event that could not be verified), `test_mode` (a test token, or the test key without both parts), `test_complete` (the test key with both parts: swap in the live key), `ip_restricted`, `rate_limited` (an hourly limit; no account has one since 29 October 2026), `monthly_quota_exceeded` (this month's checks are used up: `next_step` links to the plan that raises the allowance) or `request_failed` |
 | `complete` | At least one complete live-key check has arrived |
 | `message` / `next_step` | What the latest check showed, and what to do next (`null` when nothing is left) |
 | `last_check_at`, `complete_checks`, `last_complete_at` | When the latest check arrived, how many complete ones did, and when the latest of those did |
@@ -526,7 +560,7 @@ every argument optional (on PHP 8, by name):
 | `$apiKey` | `MASKBREAK_API_KEY` (then `SENTINEL_KEY`, `SENTINEL_API_KEY`) | Your key starting with `sk_live_` |
 | `$endpoint` | `https://maskbreak.com` | Override the base URL (for tests) |
 | `$timeout` | `5.0` | Per-request timeout in seconds |
-| `$allowTestResults` | `false` | Only for your own test runs: `isBlocked()` and `shouldBlock()` treat test, sandbox and sample answers as a normal decision |
+| `$allowTestResults` | `false` | Only for your own test runs: `isBlocked()`, `isSuspicious()` and `shouldBlock()` treat test, sandbox and sample answers as a normal decision |
 | `$warnMissingBrowserPart` | `true` | `false` turns off the one-time error-log line for a check sent without `fingerprintEventId` (since 0.3.0); `$sentinel->warnMissingBrowserPart(false)` does the same on any PHP version |
 
 ## Failing open
