@@ -329,7 +329,7 @@ class Client
      * Look up an arbitrary public IP address — no browser token needed.
      *
      * Useful for log enrichment, batch scoring, and screening server-to-server
-     * callers. Has its own monthly allowance, 10x the plan's checks (no plan
+     * callers. Has its own monthly allowance, 30x the plan's checks (no plan
      * has an hourly limit since 2026-10-29).
      *
      * Note: `known === false` means our feeds hold no data for the address. It

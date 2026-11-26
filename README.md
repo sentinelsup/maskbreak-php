@@ -1,20 +1,16 @@
-# sentinelsup/sdk — Maskbreak PHP SDK
+# Maskbreak PHP SDK
 
-Fraud detection for PHP: evaluate SDK-backed visits for network and browser
-risk signals, or look up bare IPs for cloud-range and Tor evidence. VPN/proxy
-service names are returned when known. A VPN alone routes to review under the
-default policy, not automatic blocking.
+Check a form submission or a WooCommerce checkout from PHP. The client uses cURL when available and supports PHP streams on shared hosting.
 
-Zero dependencies. cURL when the extension is available, a stream context when
-it is not, so it installs cleanly on shared hosting.
+**PHP 7.4+ · Composer** · [Packagist package](https://packagist.org/packages/sentinelsup/sdk) · [API reference](https://maskbreak.com/api)
 
 ## Install
 
-```bash
+```sh
 composer require sentinelsup/sdk
 ```
 
-Requires PHP 7.4 or newer.
+[First visitor check](#quick-start) · [WooCommerce checkout](examples/woocommerce-checkout.php) · [Test your integration](#testing) · [Integration guide](https://maskbreak.com/integrate.md)
 
 ## Quick start
 
@@ -99,8 +95,10 @@ try {
     }
 } catch (\Sentinel\SentinelException $e) {
     error_log('[maskbreak] check unavailable: ' . $e->getMessage());
-    // The month's checks are used up: let the action through, logged, until the 1st.
-    if ($e->getStatus() === 429 && ($e->getBody()['code'] ?? null) === 'monthly_quota_exceeded') $decision = 'unchecked';
+    if ($e->getStatus() === 429 && ($e->getBody()['code'] ?? null) === 'monthly_quota_exceeded') {
+        $verify = array_map('trim', explode(',', (string) getenv('MASKBREAK_QUOTA_VERIFY_ACTIONS')));
+        $decision = in_array('signup', $verify, true) ? 'review' : 'unchecked';
+    }
 }
 error_log('[maskbreak] ' . $mode . ' ' . ($decision ?? 'no answer'));
 if ($mode === 'enforce' && $decision !== 'allow' && $decision !== 'unchecked') {
@@ -357,7 +355,8 @@ if (!$passwordOk) {
     http_response_code(401);
     exit;
 }
-if ($mode === 'enforce' && !$monthUsedUp) {
+$verify = array_map('trim', explode(',', (string) getenv('MASKBREAK_QUOTA_VERIFY_ACTIONS')));
+if ($mode === 'enforce' && (!$monthUsedUp || in_array('login', $verify, true))) {
     if ($result !== null && $result->decision === 'block') {
         http_response_code(403);
         exit;
@@ -425,8 +424,8 @@ try {
 - Email and phone intelligence is on by default for accounts created from 23
   October 2026; an older account switches it on in Settings, and any account
   can switch it off there. Each address or number scored uses one of the
-  plan's daily email-and-phone checks: Free 3, Starter 20, Growth 50, Scale
-  150 a day.
+  plan's daily email-and-phone checks: Free 9, Starter 60, Growth 150, Scale
+  450 a day.
 - `'checked' => false` comes with `why`: `not_enabled`, `quota` (the day's
   checks are used up), `invalid`, `test`, `busy`, `unavailable` or
   `not_available`; `invalid`, `busy` and `unavailable` use no daily check.
@@ -694,7 +693,7 @@ matrix is not a claim that every interpreter was tested locally; inspect its run
 
 ## Rate limits
 
-Visitor checks (`evaluate()`) are counted per calendar month in UTC, with no hourly cap: **Free — 10,000 a month, no credit card**; paid plans from €29 a month ([pricing](https://maskbreak.com/pricing)). IP lookups (`lookup()`) have their own monthly allowance, 10× the plan's checks (100,000 on Free). A used-up month answers `429` with `code: "monthly_quota_exceeded"` and `Retry-After` until the 1st; there are no overage charges. The quick start lets the action through on that answer and logs it, in enforce mode too, so running out never takes your form offline.
+Visitor checks (`evaluate()`) are counted per calendar month in UTC, with no hourly cap: **Free — 10,000 a month, no credit card**; paid plans from €29 a month ([pricing](https://maskbreak.com/pricing)). IP lookups (`lookup()`) have their own monthly allowance, 30× the plan's checks (300,000 on Free). A used-up month answers `429` with `code: "monthly_quota_exceeded"` and `Retry-After` until the 1st; there are no overage charges. At this limit, the examples log the refusal. Set `MASKBREAK_QUOTA_VERIFY_ACTIONS=checkout,account_recovery` on your server to require verification for those actions in enforce mode. Other actions continue unchecked.
 
 ## Related
 
