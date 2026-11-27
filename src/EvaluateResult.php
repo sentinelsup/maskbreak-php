@@ -57,15 +57,12 @@ final class EvaluateResult
     public $raw;
 
     /**
-     * @var array<string,mixed>|null Login protection (since 0.3.0): present when event was 'login'.
-     *      {checked: true, score: 0-100, risk, signals} or {checked: false, why}. A score of 80 or
-     *      more adds account_takeover_risk and raises allow to review, never to block.
+     * @var array<string,mixed>|null Historical login score from before the provider was retired.
      */
     public $accountTakeover;
 
     /**
-     * @var array<string,mixed>|null Login protection (since 0.3.0): present when another event was
-     *      sent. {event, recorded: true} or {event, recorded: false, why}; no score comes back.
+     * @var array<string,mixed>|null Historical account-event provider response.
      */
     public $accountEvent;
 

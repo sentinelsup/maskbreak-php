@@ -422,6 +422,10 @@ check('evaluate sends each new field under its API name, only when given', funct
 
 check('the fixed-list fields are read like the API reads them, and sent in its spelling', function (): void {
     $client = new StubClient(['decision' => 'allow'], 200, false);
+    foreach (['checkout', 'account_recovery'] as $action) {
+        $client->evaluate(['token' => 'tok', 'event' => $action]);
+        assertSameValue(['token' => 'tok', 'event' => $action], $client->lastPayload);
+    }
     $client->evaluate(['token' => 'tok', 'fingerprintEventId' => 'evt', 'event' => ' Password_Change ', 'reason' => 'FORGOT',
         'verificationType' => 'Security_Key', 'verifiedEvent' => 'SignUp']);
     assertSameValue(['token' => 'tok', 'fingerprintEventId' => 'evt', 'event' => 'password_change', 'reason' => 'forgot',
@@ -430,7 +434,7 @@ check('the fixed-list fields are read like the API reads them, and sent in its s
 
 check('a value the API would ignore or misread is refused before anything is sent', function (): void {
     $cases = [
-        [['event' => 'signin'], 'event must be one of login, signup, password_change, verification, logout, account_change; the API ignores any other value'],
+        [['event' => 'signin'], 'event must be one of login, signup, password_change, verification, logout, account_change, checkout, account_recovery; the API ignores any other value'],
         [['event' => 42], 'event must be one of'],
         [['event' => 'login', 'reason' => 'expired'], 'reason must be one of user, forgot, forced; the API reads any other value as user'],
         [['event' => 'verification', 'verificationType' => 'totp'], 'verificationType must be one of email, sms, phone_call, app, push, security_key, captcha'],
@@ -625,8 +629,8 @@ check('the new answer fields land on the result', function (): void {
     assertSameValue(true, $sandbox->isBlocked(), 'a sandbox answer still counts as blocked');
 });
 
-check('the client says 0.3.2', function (): void {
-    assertSameValue('0.3.2', Client::VERSION);
+check('the client says 0.3.3', function (): void {
+    assertSameValue('0.3.3', Client::VERSION);
 });
 
 echo "\n{$passed} passed, {$failed} failed\n";

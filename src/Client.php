@@ -27,7 +27,7 @@ namespace Sentinel;
  */
 class Client
 {
-    public const VERSION = '0.3.2';
+    public const VERSION = '0.3.3';
 
     private const DEFAULT_ENDPOINT = 'https://maskbreak.com';
     private const DEFAULT_TIMEOUT = 5.0;
@@ -38,7 +38,7 @@ class Client
      * a word, so a typo such as "signin" would run the check without login
      * protection: evaluate() refuses it instead (0.3.0).
      */
-    private const EVENTS = ['login', 'signup', 'password_change', 'verification', 'logout', 'account_change'];
+    private const EVENTS = ['login', 'signup', 'password_change', 'verification', 'logout', 'account_change', 'checkout', 'account_recovery'];
 
     /**
      * Account events a server reports on its own, often with no page in front
@@ -212,7 +212,7 @@ class Client
      *     @var string      $phone              The visitor's phone number in international format; with
      *                                          email and phone intelligence on, adds `phone` (0.3.0).
      *     @var string      $event              Login protection (0.3.0): login, signup, password_change,
-     *                                          verification, logout or account_change.
+     *                                          verification, logout, account_change, checkout or account_recovery.
      *     @var bool        $loginSucceeded     With event login: whether the credential was right.
      *     @var bool        $succeeded          With password_change or verification: whether it
      *                                          succeeded (absent means pending).

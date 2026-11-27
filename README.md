@@ -128,6 +128,10 @@ the older `SENTINEL_KEY` and `SENTINEL_API_KEY` names are still read as fallback
 
 ## What's new
 
+### 0.3.3
+
+Use `checkout` or `account_recovery` as the event on a browser-backed check. The Events dashboard and CSV export can filter checks by these actions. Set the event from the handler processing the request.
+
 ### 0.3.2
 
 - A `token` that is only whitespace (a space, a tab, a line break, U+00A0,
